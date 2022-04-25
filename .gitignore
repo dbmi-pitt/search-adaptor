@@ -2,10 +2,9 @@ BUILD
 
 **/.vscode/
 
-**/*.bak
-**/*-local*
-
-**/*.orig
+#eclipse project files
+.project
+.pydevproject
 
 # Docker stuff
 docker/data
@@ -13,9 +12,6 @@ docker/search-api/src
 docker/search-api/VERSION
 docker/search-api/BUILD
 
-# Configuration
-src/instance/app.cfg
-src/instance/search-config.yaml
 
 # Copied files for localhost and dev
 src/BUILD
@@ -27,6 +23,8 @@ src/VERSION
 # Rotated log files
 **/*.log*
 
+# Portal cache
+src/translator/hubmap_translation/addl_index_transformations/portal/cache/*.jsonld
 
 __pycache__/
 
@@ -38,3 +36,5 @@ Pipfile.lock
 .pydevproject
 
 .idea
+
+*.DS_Store
