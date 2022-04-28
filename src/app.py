@@ -284,8 +284,8 @@ class SearchAPI:
     def status(self):
         response_data = {
             # Use strip() to remove leading and trailing spaces, newlines, and tabs
-            'version': ((Path(__file__).absolute().parent.parent / 'VERSION').read_text()).strip(),
-            'build': ((Path(__file__).absolute().parent.parent / 'BUILD').read_text()).strip(),
+            'version': ((Path(__file__).absolute().parent.parent.parent.parent / 'VERSION').read_text()).strip(),
+            'build': ((Path(__file__).absolute().parent.parent.parent.parent / 'BUILD').read_text()).strip(),
             'elasticsearch_connection': False
         }
 
