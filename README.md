@@ -1,31 +1,8 @@
-# HuBMAP Search API
+# Search Adaptor
 
-The HuBMAP Search API is a thin wrapper of the Elasticsearch. It handles data indexing and reindexing into the backend Elasticsearch. It also accepts the search query and passes through to the Elasticsearch with data access security check.
+The Search Adaptor is a thin wrapper of the Elasticsearch. It handles data indexing and reindexing into the backend Elasticsearch. It also accepts the search query and passes through to the Elasticsearch with data access security check.  This adaptor can be used to create a RESTful web service interface into an Elasticsearch store where multiple indice pairs can be created, with each indice pair documents being transformed by separately provided transformer code.  Each index in a pair is used for access level- ALL vs PUBLIC, where all documents are included in the ALL index and only PUBLICALLY available documents are added to the PUBLIC index. On a GET/search request the adaptor will check a user's credentials sending the request to the ALL or PUBLIC index depending on the user's access level.  Several layers of Translation can be provided to morph the data on the way to the indices.
 
-The API documentation is available on SmartAPI at https://smart-api.info/ui/7aaf02b838022d564da776b03f357158
 
-## Development process
-
-### Portal index
-
-Front end developers who need to work on the `portal` index should start in
-[the `addl_index_transformations/portal` subdirectory](https://github.com/hubmapconsortium/search-api/tree/test-release/src/elasticsearch/addl_index_transformations/portal);
-You don't need to read the rest of this page.
-
-### Local development
-After checking out the repo, installing the dependencies,
-and starting a local Elasticsearch instance, tests should pass:
-```shell
-COMMONS_BRANCH=master pip install -r requirements.txt
-pip install -r requirements-dev.txt
-
-# on mac:
-brew tap elastic/tap
-brew install elastic/tap/hubmap_translation-full
-hubmap_translation &  # Wait for it to start...
-
-./test.sh
-```
 
 ### To release via TEST infrastructure
 - Make new feature or bug fix branches from `test-release`.
@@ -47,14 +24,6 @@ All codes used by the system need to be represented in
 The most frequently updated is `assay_types.yaml`:
 Nils likes to review the descriptions here, so he is listed as a "[code owner](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/about-code-owners)".
 
-## Search endpoint and group access check
-
-The search-api base URL for each deployment environment:
-
-- DEV: `https://search-api.dev.hubmapconsortium.org`
-- TEST: `https://search-api.test.hubmapconsortium.org`
-- STAGE: `https://search-api.stage.hubmapconsortium.org`
-- PROD: `https://search.api.hubmapconsortium.org`
 
 ## Request endpoints
 
@@ -84,7 +53,7 @@ POST /<index>/search
 Due to data access restriction, indexed entries are protected and calls to the above endpoints require the `Authorization` header with the Bearer token (globus nexus token) along with the search query JSON body. There are three cases when making a search call:
 
 - Case #1: Authorization header is missing, default to use the `entities` index with only public data entries. 
-- Case #2: Authorization header with valid token, but the member doesn't belong to the HuBMAP-Read group, direct the call to use the `entities` index with only public data entries. 
+- Case #2: Authorization header with valid token, but the member doesn't belong to the group specified in XXXXXXX, direct the call to use the `entities` index with only public data entries. 
 - Case #3: Authorization header presents but with invalid or expired token, return 401 (if someone is sending a token, they might be expecting more than public stuff).
 - Case #4: Authorization header presents with a valid token that has the group access, **ALL** the user specified search query DSL (Domain Specific Language) detail will be passed to the Elasticsearch just like making queries against the Elasticsearch directly.
 
