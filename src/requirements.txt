@@ -25,8 +25,8 @@ jsonschema==3.2.0
 requests==2.25.1
 PyYAML==5.4.1
 
-# The branch name of commons to be used during image build:
-# Default is master branch specified in docker-compose.yml if not set.
-# For local development:
-# COMMONS_BRANCH=master pip install -r requirements.txt
-git+https://github.com/hubmapconsortium/commons.git@${COMMONS_BRANCH}#egg=hubmap-commons
+# Use the published package from PyPI as default
+# Use the branch name of commons from github for testing new changes made in commons
+# Default is master branch specified in docker-compose.yml if not set
+# git+https://github.com/hubmapconsortium/commons.git@${COMMONS_BRANCH}#egg=hubmap-commons
+hubmap-commons==2.0.14
