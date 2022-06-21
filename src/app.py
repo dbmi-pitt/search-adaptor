@@ -122,6 +122,8 @@ class SearchAPI:
             # Log the full stack trace, prepend a line with our message
             logger.exception(msg)
 
+        self.auth = check_for_aws_creditials()
+
     ####################################################################################################
     ## Register error handlers
     ####################################################################################################
@@ -209,7 +211,7 @@ class SearchAPI:
             '/')
 
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_search', request, target_index, es_url)
+        return execute_query('_search', request, target_index, es_url, self.auth)
 
     # Both HTTP GET and HTTP POST can be used to execute search with body against ElasticSearch REST API.
     # BUT AWS API Gateway only supports POST with request body
@@ -231,7 +233,7 @@ class SearchAPI:
         es_url = self.INDICES['indices'][index_without_prefix]['elasticsearch']['url'].strip('/')
 
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_search', request, target_index, es_url)
+        return execute_query('_search', request, target_index, es_url, self.auth)
 
     # HTTP GET can be used to execute search with body against ElasticSearch REST API.
     def count(self):
@@ -247,7 +249,7 @@ class SearchAPI:
         es_url = self.INDICES['indices'][self.DEFAULT_INDEX_WITHOUT_PREFIX]['elasticsearch']['url'].strip('/')
 
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_count', request, target_index, es_url)
+        return execute_query('_count', request, target_index, es_url, self.auth)
 
     # HTTP GET can be used to execute search with body against ElasticSearch REST API.
     # Note: the index in URL is not he real index in Elasticsearch, it's that index without prefix
@@ -268,7 +270,7 @@ class SearchAPI:
         es_url = self.INDICES['indices'][index_without_prefix]['elasticsearch']['url'].strip('/')
 
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_count', request, target_index, es_url)
+        return execute_query('_count', request, target_index, es_url, self.auth)
 
     # Get a list of indices
     def indices(self):
