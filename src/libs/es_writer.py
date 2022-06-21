@@ -3,6 +3,7 @@ import json
 import os
 import logging
 import sys
+from opensearch_helper_functions import check_for_aws_creditials
 
 # Set logging fromat and level (default is warning)
 # All the API logging is forwarded to the uWSGI server and gets written into the log file `uwsgo-entity-api.log`
@@ -14,11 +15,13 @@ logger = logging.getLogger(__name__)
 class ESWriter:
     def __init__(self, elasticsearch_url):
         self.elasticsearch_url = elasticsearch_url
+        self.auth = check_for_aws_creditials()
 
     def write_document(self, index_name, doc, uuid):
         try:
             headers = {'Content-Type': 'application/json'}
-            rspn = requests.post(f"{self.elasticsearch_url}/{index_name}/_doc/{uuid}", headers=headers, data=doc)
+            rspn = requests.post(f"{self.elasticsearch_url}/{index_name}/_doc/{uuid}", headers=headers, 
+                    auth=self.auth, data=doc)
             if rspn.ok:
                 logger.info(f"Added doc of uuid: {uuid} to index: {index_name}")
             else:
@@ -32,7 +35,8 @@ class ESWriter:
     def delete_document(self, index_name, uuid):
         try:
             headers = {'Content-Type': 'application/json'}
-            rspn = requests.post(f"{self.elasticsearch_url}/{index_name}/_delete_by_query?q=uuid:{uuid}", headers=headers)
+            rspn = requests.post(f"{self.elasticsearch_url}/{index_name}/_delete_by_query?q=uuid:{uuid}", 
+                auth=self.auth, headers=headers)
             if rspn.ok:
                 logger.info(f"Deleted doc of uuid: {uuid} from index: {index_name}")
             else:
@@ -49,7 +53,8 @@ class ESWriter:
 
             #logger.debug(f"Document: {doc}")
 
-            rspn = requests.put(f"{self.elasticsearch_url}/{index_name}/{type_}/{uuid}", headers=headers, data=doc)
+            rspn = requests.put(f"{self.elasticsearch_url}/{index_name}/{type_}/{uuid}", headers=headers, 
+                auth=self.auth, data=doc)
             if rspn.status_code in [200, 201, 202]:
                 logger.info(f"Added doc of uuid: {uuid} to index: {index_name}")
             else:
@@ -79,7 +84,7 @@ class ESWriter:
         try:
             headers = {'Content-Type': 'application/json'}
 
-            rspn = requests.put(f"{self.elasticsearch_url}/{index_name}", headers=headers, data=json.dumps(config))
+            rspn = requests.put(f"{self.elasticsearch_url}/{index_name}", headers=headers, auth=self.auth, data=json.dumps(config))
             if rspn.ok:
                 logger.info(f"Created index: {index_name}")
             else:

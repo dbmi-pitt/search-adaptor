@@ -4,6 +4,9 @@ from flask import abort, jsonify, Flask
 import logging
 import requests
 from urllib.parse import urlparse
+from requests_aws4auth import AWS4Auth
+import boto3
+from botocore.session import Session
 
 logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d: %(message)s', level=logging.DEBUG,
                     datefmt='%Y-%m-%d %H:%M:%S')
@@ -117,7 +120,10 @@ def execute_query(query_against, request, index, es_url, query=None):
 
     logger.debug(json_data)
 
-    response = requests.post(url=target_url, json=json_data)
+    if (check_for_aws_creditials()): 
+        response = requests.post(target_url, auth=awsauth, json=json_data)
+    else:
+        response = requests.post(url=target_url, json=json_data)
 
     logger.debug(f"==========response status code: {response.status_code} ==========")
 
@@ -146,6 +152,14 @@ def get_query_string(url):
 
     return query_string
 
+# A check for the AWS creditials to sign the request, if None is available it should use the normal request
+def check_for_aws_creditials():
+    try:
+        credentials = Session().get_credentials()
+        awsauth = AWS4Auth(region='us-east-1', service='es', refreshable_credentials=credentials)
+        return awsauth
+    except Exception as e:
+        return None
 
 """
 Send back useful error message instead of AWS API Gateway's default 500 message
