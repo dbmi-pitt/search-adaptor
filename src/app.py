@@ -8,7 +8,6 @@ from hubmap_commons.hm_auth import AuthHelper
 from urllib3.exceptions import InsecureRequestWarning
 from yaml import safe_load
 
-from libs.assay_type import AssayType
 # Local modules
 from opensearch_helper_functions import *
 
@@ -26,12 +25,13 @@ logger = logging.getLogger(__name__)
 
 
 class SearchAPI:
-    def __init__(self, config, translator_module):
+    def __init__(self, config, translator_module, assay_type_module=None):
         # Set self based on passed in config parameters
         for key, value in config.items():
             setattr(self, key, value)
 
         self.translator_module = translator_module
+        self.assay_type_module = assay_type_module
 
         # Specify the absolute path of the instance folder and use the config file relative to the instance path
         self.app = Flask(__name__, instance_path=os.path.join(os.path.abspath(os.path.dirname(__file__))))
@@ -56,14 +56,15 @@ class SearchAPI:
         def __index():
             return self.index()
 
-        @self.app.route('/assaytype', methods=['GET'])
-        def __assaytypes():
-            return self.assaytypes()
+        if assay_type_module != None:
+            @self.app.route('/assaytype', methods=['GET'])
+            def __assaytypes():
+                return self.assaytypes()
 
-        @self.app.route('/assaytype/<name>', methods=['GET'])
-        @self.app.route('/assayname', methods=['POST'])
-        def __assayname(name=None):
-            return self.assayname(name)
+            @self.app.route('/assaytype/<name>', methods=['GET'])
+            @self.app.route('/assayname', methods=['POST'])
+            def __assayname(name=None):
+                return self.assayname(name)
 
         @self.app.route('/search', methods=['POST'])
         def __search():
@@ -154,6 +155,7 @@ class SearchAPI:
     ####################################################################################################
 
     def assaytypes(self):
+
         primary = None
         simple = False
         for key, val in request.args.items():
@@ -165,14 +167,14 @@ class SearchAPI:
                 abort(400, f'invalid request parameter {key}')
 
         if primary is None:
-            name_l = [name for name in AssayType.iter_names()]
+            name_l = [name for name in self.assay_type_module.AssayType.iter_names()]
         else:
-            name_l = [name for name in AssayType.iter_names(primary=primary)]
+            name_l = [name for name in self.assay_type_module.AssayType.iter_names(primary=primary)]
 
         if simple:
             return jsonify(result=name_l)
         else:
-            return jsonify(result=[AssayType(name).to_json() for name in name_l])
+            return jsonify(result=[self.assay_type_module.AssayType(name).to_json() for name in name_l])
 
     def assayname(self, name=None):
         if name is None:
@@ -182,7 +184,7 @@ class SearchAPI:
             except Exception:
                 abort(400, 'request contains no "name" field')
         try:
-            return jsonify(AssayType(name).to_json())
+            return jsonify(self.assay_type_module(name).to_json())
         except Exception as e:
             abort(400, str(e))
 
@@ -437,14 +439,14 @@ class SearchAPI:
 
     """
     Parase the token from Authorization header
-    
+
     Parameters
     ----------
     request_headers: request.headers
         The http request headers
     admin_access_required : bool
         If the token is required to belong to the HuBMAP-Data-Admin group, default to False
-    
+
     Returns
     -------
     str
@@ -479,13 +481,13 @@ class SearchAPI:
 
     """
     Check if the user with token belongs to the HuBMAP-Data-Admin group
-    
+
     Parameters
     ----------
     request : falsk.request
         The flask http request object that containing the Authorization header
         with a valid Globus nexus token for checking group information
-    
+
     Returns
     -------
     bool
@@ -513,17 +515,17 @@ class SearchAPI:
     """
     Get user infomation dict based on the http request(headers)
     The result will be used by the trigger methods
-    
+
     Parameters
     ----------
     request : Flask request object
         The Flask request passed from the API endpoint 
-    
+
     Returns
     -------
     dict
         A dict containing all the user info
-    
+
         {
             "scope": "urn:globus:auth:scope:nexus.api.globus.org:groups",
             "name": "First Last",
