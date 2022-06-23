@@ -184,7 +184,7 @@ class SearchAPI:
             except Exception:
                 abort(400, 'request contains no "name" field')
         try:
-            return jsonify(self.assay_type_module(name).to_json())
+            return jsonify(self.assay_type_module.AssayType(name).to_json())
         except Exception as e:
             abort(400, str(e))
 
