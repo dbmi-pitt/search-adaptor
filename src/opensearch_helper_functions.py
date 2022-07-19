@@ -84,7 +84,7 @@ def get_uuids_from_es(index, es_url):
 
 
 # Make a call to Elasticsearch
-def execute_query(query_against, request, index, es_url, query=None, auth=None):
+def execute_query(query_against, request, index, es_url, query=None):
     supported_query_against = ['_search', '_count']
     separator = ','
 
@@ -120,10 +120,11 @@ def execute_query(query_against, request, index, es_url, query=None, auth=None):
 
     logger.debug(json_data)
 
-    #if (check_for_aws_creditials()): 
-    response = requests.post(target_url, auth=auth, json=json_data)
-    #else:
-    #    response = requests.post(url=target_url, json=json_data)
+    auth = check_for_aws_creditials()
+    if (auth): 
+        response = requests.post(target_url, auth=auth, json=json_data)
+    else:
+        response = requests.post(url=target_url, json=json_data)
 
     logger.debug(f"==========response status code: {response.status_code} ==========")
 
@@ -157,8 +158,11 @@ def check_for_aws_creditials():
     try:
         credentials = Session().get_credentials()
         awsauth = AWS4Auth(region='us-east-1', service='es', refreshable_credentials=credentials)
+
+        logger.info("AWS4Auth credentials initialized...")
         return awsauth
     except Exception as e:
+        logger.info("AWS4Auth credentials NOT FOUND...")
         return None
 
 """

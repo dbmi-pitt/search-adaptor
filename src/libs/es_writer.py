@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 class ESWriter:
     def __init__(self, elasticsearch_url):
         self.elasticsearch_url = elasticsearch_url
-        self.auth = check_for_aws_creditials()
 
     def write_document(self, index_name, doc, uuid):
         try:
+            auth = check_for_aws_creditials()
+
             headers = {'Content-Type': 'application/json'}
             rspn = requests.post(f"{self.elasticsearch_url}/{index_name}/_doc/{uuid}", headers=headers, 
-                    auth=self.auth, data=doc)
+                    auth=auth, data=doc)
             if rspn.ok:
                 logger.info(f"Added doc of uuid: {uuid} to index: {index_name}")
             else:
@@ -34,9 +35,10 @@ class ESWriter:
 
     def delete_document(self, index_name, uuid):
         try:
+            auth = check_for_aws_creditials()
             headers = {'Content-Type': 'application/json'}
             rspn = requests.post(f"{self.elasticsearch_url}/{index_name}/_delete_by_query?q=uuid:{uuid}", 
-                auth=self.auth, headers=headers)
+                auth=auth, headers=headers)
             if rspn.ok:
                 logger.info(f"Deleted doc of uuid: {uuid} from index: {index_name}")
             else:
@@ -49,12 +51,13 @@ class ESWriter:
 
     def write_or_update_document(self, index_name='index', type_='_doc', doc='', uuid=''):
         try:
+            auth = check_for_aws_creditials()
             headers = {'Content-Type': 'application/json'}
 
             #logger.debug(f"Document: {doc}")
 
             rspn = requests.put(f"{self.elasticsearch_url}/{index_name}/{type_}/{uuid}", headers=headers, 
-                auth=self.auth, data=doc)
+                auth=auth, data=doc)
             if rspn.status_code in [200, 201, 202]:
                 logger.info(f"Added doc of uuid: {uuid} to index: {index_name}")
             else:
@@ -67,6 +70,7 @@ class ESWriter:
 
     def delete_index(self, index_name):
         try:
+
             rspn = requests.delete(f"{self.elasticsearch_url}/{index_name}")
 
             if rspn.ok:
@@ -82,9 +86,10 @@ class ESWriter:
     # The settings and mappings definition needs to be passed in via config
     def create_index(self, index_name, config):
         try:
+            auth = check_for_aws_creditials()
             headers = {'Content-Type': 'application/json'}
 
-            rspn = requests.put(f"{self.elasticsearch_url}/{index_name}", headers=headers, auth=self.auth, data=json.dumps(config))
+            rspn = requests.put(f"{self.elasticsearch_url}/{index_name}", headers=headers, auth=auth, data=json.dumps(config))
             if rspn.ok:
                 logger.info(f"Created index: {index_name}")
             else:
