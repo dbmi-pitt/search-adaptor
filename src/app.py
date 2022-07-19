@@ -2,7 +2,7 @@ import concurrent.futures
 import threading
 from pathlib import Path
 
-from flask import request, Response
+from flask import request, Response, Blueprint
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
 from urllib3.exceptions import InsecureRequestWarning
@@ -23,6 +23,8 @@ requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d: %(message)s', level=logging.DEBUG,
                     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
+aws_api_gateway_prefix = '/search-api'
+aws_api_gateway_blueprint = Blueprint('search', __name__)
 
 
 class SearchAPI:
@@ -52,6 +54,7 @@ class SearchAPI:
         def __http_internal_server_error(e):
             return self.http_internal_server_error(e)
 
+        @aws_api_gateway_blueprint.route('/')
         @self.app.route('/', methods=['GET'])
         def __index():
             return self.index()
@@ -69,6 +72,7 @@ class SearchAPI:
         def __search():
             return self.search()
 
+        @aws_api_gateway_blueprint.route('/<index_without_prefix>/search', methods=['POST'])
         @self.app.route('/<index_without_prefix>/search', methods=['POST'])
         def __search_by_index(index_without_prefix):
             return self.search_by_index(index_without_prefix)
@@ -97,10 +101,12 @@ class SearchAPI:
         def __reindex_all():
             return self.reindex_all()
 
+        @aws_api_gateway_blueprint.route('/update/<uuid>', methods=['PUT'])
         @self.app.route('/update/<uuid>', methods=['PUT'])
         def __update(uuid):
             return self.update(uuid)
 
+        @aws_api_gateway_blueprint.route('/add/<uuid>', methods=['POST'])
         @self.app.route('/add/<uuid>', methods=['POST'])
         def __add(uuid):
             return self.add(uuid)
@@ -121,7 +127,7 @@ class SearchAPI:
             msg = "Failed to initialize the AuthHelper class"
             # Log the full stack trace, prepend a line with our message
             logger.exception(msg)
-
+        self.app.register_blueprint(aws_api_gateway_blueprint, url_prefix=aws_api_gateway_prefix)
     ####################################################################################################
     ## Register error handlers
     ####################################################################################################
