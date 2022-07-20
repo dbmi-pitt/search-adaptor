@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class SearchAPI:
-    def __init__(self, config, translator_module, assay_type_module=None):
+    def __init__(self, config, translator_module, assay_type_module=None, hubmap_blueprint=None):
         # Set self based on passed in config parameters
         for key, value in config.items():
             setattr(self, key, value)
@@ -35,6 +35,7 @@ class SearchAPI:
 
         # Specify the absolute path of the instance folder and use the config file relative to the instance path
         self.app = Flask(__name__, instance_path=os.path.join(os.path.abspath(os.path.dirname(__file__))))
+        self.app.register_blueprint(hubmap_blueprint)
 
         @self.app.errorhandler(400)
         def __http_bad_request(e):
