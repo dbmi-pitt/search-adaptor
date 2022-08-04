@@ -24,7 +24,7 @@ class ESWriter:
             else:
                 logger.error(f"Failed to write {uuid} to elasticsearch, index: {index_name}")
                 logger.error(f"Error Message: {rspn.text}")
-                logger.info("==============ESWriter.write_document(): request body containing the JSON source for the document data==============")
+                logger.info("==============ESWriter.write_document(): request body of JSON source==============")
                 logger.info(doc)
         except Exception:
             msg = "Exception encountered during executing ESWriter.write_document()"
@@ -54,7 +54,7 @@ class ESWriter:
             else:
                 logger.error(f"Failed to write doc of uuid: {uuid} to index: {index_name}")
                 logger.error(f"Error Message: {rspn.text}")
-                logger.info("==============ESWriter.write_or_update_document(): equest body containing the JSON source for the document data==============")
+                logger.info("==============ESWriter.write_or_update_document(): request body of JSON source==============")
                 logger.info(doc)
         except Exception:
             msg = "Exception encountered during executing ESWriter.write_or_update_document()"
