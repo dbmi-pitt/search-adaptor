@@ -24,6 +24,8 @@ class ESWriter:
             else:
                 logger.error(f"Failed to write {uuid} to elasticsearch, index: {index_name}")
                 logger.error(f"Error Message: {rspn.text}")
+                logger.info("==============ESWriter.write_document(): request body of JSON source==============")
+                logger.info(doc)
         except Exception:
             msg = "Exception encountered during executing ESWriter.write_document()"
             # Log the full stack trace, prepend a line with our message
@@ -46,15 +48,14 @@ class ESWriter:
     def write_or_update_document(self, index_name='index', type_='_doc', doc='', uuid=''):
         try:
             headers = {'Content-Type': 'application/json'}
-
-            #logger.debug(f"Document: {doc}")
-
             rspn = requests.put(f"{self.elasticsearch_url}/{index_name}/{type_}/{uuid}", headers=headers, data=doc)
             if rspn.status_code in [200, 201, 202]:
                 logger.info(f"Added doc of uuid: {uuid} to index: {index_name}")
             else:
                 logger.error(f"Failed to write doc of uuid: {uuid} to index: {index_name}")
                 logger.error(f"Error Message: {rspn.text}")
+                logger.info("==============ESWriter.write_or_update_document(): request body of JSON source==============")
+                logger.info(doc)
         except Exception:
             msg = "Exception encountered during executing ESWriter.write_or_update_document()"
             # Log the full stack trace, prepend a line with our message
