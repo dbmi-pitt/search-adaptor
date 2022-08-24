@@ -314,7 +314,7 @@ class SearchAPI:
     # in addition to the Dataset, Donor, Sample entities
     def reindex(self, uuid):
         # Reindex individual document doesn't require the token to belong
-        # to the HuBMAP-Data-Admin group
+        # to the Data Admin group
         # since this is being used by entity-api and ingest-api too
         token = self.get_user_token(request.headers)
 
@@ -347,7 +347,7 @@ class SearchAPI:
     # Live reindex without first deleting and recreating the indices
     # This just deletes the old document and add the latest document of each entity (if still available)
     def reindex_all(self):
-        # The token needs to belong to the HuBMAP-Data-Admin group
+        # The token needs to belong to the Data Admin group
         # to be able to trigger a live reindex for all documents
         token = self.get_user_token(request.headers, admin_access_required=True)
         saved_request = request.headers
@@ -451,7 +451,7 @@ class SearchAPI:
     request_headers: request.headers
         The http request headers
     admin_access_required : bool
-        If the token is required to belong to the HuBMAP-Data-Admin group, default to False
+        If the token is required to belong to the Data Admin group, default to False
 
     Returns
     -------
@@ -477,9 +477,9 @@ class SearchAPI:
 
         if admin_access_required:
             # By now the token is already a valid token
-            # But we also need to ensure the user belongs to HuBMAP-Data-Admin group
+            # But we also need to ensure the user belongs to Data Admin group
             # in order to execute the live reindex-all
-            # Return a 403 response if the user doesn't belong to HuBMAP-Data-Admin group
+            # Return a 403 response if the user doesn't belong to Data Admin group
             if not self.user_in_data_admin_group(request):
                 forbidden_error("Access not granted")
 
@@ -497,7 +497,7 @@ class SearchAPI:
     Returns
     -------
     bool
-        True if the user belongs to HuBMAP-Data-Admin group, otherwise False
+        True if the user belongs to Data Admin group, otherwise False
     """
 
     def user_in_data_admin_group(self, request):
@@ -505,15 +505,14 @@ class SearchAPI:
             # The property 'hmgroupids' is ALWASYS in the output with using get_user_info()
             # when the token in request is a nexus_token
             user_info = self.get_user_info(request)
-            data_admin_group_uuid = self.auth_helper_instance.groupNameToId(self.SECURE_GROUP)[
-                'uuid']
+            data_admin_group_uuid = self.auth_helper_instance.groupNameToId(self.SECURE_GROUP)['uuid']
         except Exception as e:
             # Log the full stack trace, prepend a line with our message
             logger.exception(e)
 
             # If the token is not a nexus token, no group information available
             # The commons.hm_auth.AuthCache would return a Response with 500 error message
-            # We treat such cases as the user not in the HuBMAP-Data-Admin group
+            # We treat such cases as the user not in the Data Admin group
             return False
 
         return data_admin_group_uuid in user_info[self.GROUP_ID]
@@ -587,10 +586,10 @@ class SearchAPI:
 
     # Determine the target real index in Elasticsearch bases on the request header and given index (without prefix)
     # The Authorization header with globus token is optional
-    # Case #1: Authorization header is missing, default to use the `hm_public_<index_without_prefix>`.
-    # Case #2: Authorization header with valid token, but the member doesn't belong to the HuBMAP-Read group, direct the call to `hm_public_<index_without_prefix>`.
+    # Case #1: Authorization header is missing, default to use the `<project_prefix>_public_<index_without_prefix>`.
+    # Case #2: Authorization header with valid token, but the member doesn't belong to the Globus Read group, direct the call to `<project_prefix>_public_<index_without_prefix>`.
     # Case #3: Authorization header presents but with invalid or expired token, return 401 (if someone is sending a token, they might be expecting more than public stuff).
-    # Case #4: Authorization header presents with a valid token that has the group access, direct the call to `hm_consortium_<index_without_prefix>`.
+    # Case #4: Authorization header presents with a valid token that has the group access, direct the call to `<project_prefix>_consortium_<index_without_prefix>`.
     def get_target_index(self, request, index_without_prefix):
         # Case #1 and #2
         target_index = None
@@ -612,7 +611,7 @@ class SearchAPI:
             # Key 'hmgroupids' presents only when group_required is True
             else:
                 # Case #4
-                if self.GLOBUS_HUBMAP_READ_GROUP_UUID in user_info[self.GROUP_ID]:
+                if self.GLOBUS_READ_GROUP_UUID in user_info[self.GROUP_ID]:
                     target_index = self.INDICES['indices'][index_without_prefix]['private']
 
         if target_index is None:
