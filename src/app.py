@@ -10,6 +10,8 @@ from yaml import safe_load
 
 # Local modules
 from opensearch_helper_functions import *
+from hubmap_commons.file_helper import hasSSH
+from builtins import True
 
 # Suppress InsecureRequestWarning warning when requesting status on https with ssl cert verify disabled
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
@@ -113,7 +115,13 @@ class SearchAPI:
         # Initialize AuthHelper class and ensure singleton
         try:
             if AuthHelper.isInitialized() == False:
-                self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET)
+                use_sennet_grps = False
+                if hasattr(translator_module.Translator, 'USE_SENNET_GROUPS') and translator_module.Translator.USE_SENNET_GROUPS:
+                    use_sennet_grps = True
+                if use_sennet_grps:
+                    self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, use_sennet_grps = True)
+                else:
+                    self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET)
 
                 logger.info("Initialized AuthHelper class successfully :)")
             else:
