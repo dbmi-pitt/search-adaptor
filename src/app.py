@@ -480,13 +480,13 @@ class SearchAPI:
             # But we also need to ensure the user belongs to HuBMAP-Data-Admin group
             # in order to execute the live reindex-all
             # Return a 403 response if the user doesn't belong to HuBMAP-Data-Admin group
-            if not self.user_in_hubmap_data_admin_group(request):
+            if not self.user_in_data_admin_group(request):
                 forbidden_error("Access not granted")
 
         return user_token
 
     """
-    Check if the user with token belongs to the HuBMAP-Data-Admin group
+    Check if the user with token belongs to the Globus Data Admin group
 
     Parameters
     ----------
@@ -500,12 +500,12 @@ class SearchAPI:
         True if the user belongs to HuBMAP-Data-Admin group, otherwise False
     """
 
-    def user_in_hubmap_data_admin_group(self, request):
+    def user_in_data_admin_group(self, request):
         try:
             # The property 'hmgroupids' is ALWASYS in the output with using get_user_info()
             # when the token in request is a nexus_token
             user_info = self.get_user_info(request)
-            hubmap_data_admin_group_uuid = self.auth_helper_instance.groupNameToId(self.SECURE_GROUP)[
+            data_admin_group_uuid = self.auth_helper_instance.groupNameToId(self.SECURE_GROUP)[
                 'uuid']
         except Exception as e:
             # Log the full stack trace, prepend a line with our message
@@ -516,7 +516,7 @@ class SearchAPI:
             # We treat such cases as the user not in the HuBMAP-Data-Admin group
             return False
 
-        return hubmap_data_admin_group_uuid in user_info[self.GROUP_ID]
+        return data_admin_group_uuid in user_info[self.GROUP_ID]
 
     """
     Get user infomation dict based on the http request(headers)
