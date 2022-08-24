@@ -117,7 +117,7 @@ class SearchAPI:
                 if hasattr(translator_module.Translator, 'USE_SENNET_GROUPS') and translator_module.Translator.USE_SENNET_GROUPS:
                     use_sennet_grps = True
                 if use_sennet_grps:
-                    self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, use_sennet_grps = True)
+                    self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, use_sennet_groups = True)
                 else:
                     self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET)
 
