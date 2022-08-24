@@ -10,8 +10,6 @@ from yaml import safe_load
 
 # Local modules
 from opensearch_helper_functions import *
-from hubmap_commons.file_helper import hasSSH
-from builtins import True
 
 # Suppress InsecureRequestWarning warning when requesting status on https with ssl cert verify disabled
 requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
