@@ -113,14 +113,7 @@ class SearchAPI:
         # Initialize AuthHelper class and ensure singleton
         try:
             if AuthHelper.isInitialized() == False:
-                use_sennet_grps = False
-                if hasattr(translator_module.Translator, 'USE_SENNET_GROUPS') and translator_module.Translator.USE_SENNET_GROUPS:
-                    use_sennet_grps = True
-                if use_sennet_grps:
-                    self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, use_sennet_groups = True)
-                else:
-                    self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET)
-
+                self.auth_helper_instance = AuthHelper.create(self.APP_CLIENT_ID, self.APP_CLIENT_SECRET)
                 logger.info("Initialized AuthHelper class successfully :)")
             else:
                 self.auth_helper_instance = AuthHelper.instance()
