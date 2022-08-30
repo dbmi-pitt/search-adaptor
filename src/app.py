@@ -473,42 +473,10 @@ class SearchAPI:
             # But we also need to ensure the user belongs to Data Admin group
             # in order to execute the live reindex-all
             # Return a 403 response if the user doesn't belong to Data Admin group
-            if not self.user_in_data_admin_group(request):
+            if not self.auth_helper_instance.has_data_admin_privs(user_token):
                 forbidden_error("Access not granted")
 
         return user_token
-
-    """
-    Check if the user with token belongs to the Globus Data Admin group
-
-    Parameters
-    ----------
-    request : falsk.request
-        The flask http request object that containing the Authorization header
-        with a valid Globus nexus token for checking group information
-
-    Returns
-    -------
-    bool
-        True if the user belongs to Data Admin group, otherwise False
-    """
-
-    def user_in_data_admin_group(self, request):
-        try:
-            # The property 'hmgroupids' is ALWASYS in the output with using get_user_info()
-            # when the token in request is a nexus_token
-            user_info = self.get_user_info(request)
-            data_admin_group_uuid = self.auth_helper_instance.groupNameToId(self.SECURE_GROUP)['uuid']
-        except Exception as e:
-            # Log the full stack trace, prepend a line with our message
-            logger.exception(e)
-
-            # If the token is not a nexus token, no group information available
-            # The commons.hm_auth.AuthCache would return a Response with 500 error message
-            # We treat such cases as the user not in the Data Admin group
-            return False
-
-        return data_admin_group_uuid in user_info[self.GROUP_ID]
 
     """
     Get user infomation dict based on the http request(headers)
