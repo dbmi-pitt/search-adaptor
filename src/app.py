@@ -550,7 +550,7 @@ class SearchAPI:
     # Case #1: Authorization header is missing, default to use the `<project_prefix>_public_<index_without_prefix>`.
     # Case #2: Authorization header with valid token, but the member doesn't belong to the Globus Read group, direct the call to `<project_prefix>_public_<index_without_prefix>`.
     # Case #3: Authorization header presents but with invalid or expired token, return 401 (if someone is sending a token, they might be expecting more than public stuff).
-    # Case #4: Authorization header presents with a valid token that has the group access, direct the call to `<project_prefix>_consortium_<index_without_prefix>`.
+    # Case #4: Authorization header presents with a valid token that has the read group access, direct the call to `<project_prefix>_consortium_<index_without_prefix>`.
     def get_target_index(self, request, index_without_prefix):
         # Case #1 and #2
         target_index = None
@@ -572,7 +572,8 @@ class SearchAPI:
             # Key 'hmgroupids' presents only when group_required is True
             else:
                 # Case #4
-                if self.GLOBUS_READ_GROUP_UUID in user_info[self.GROUP_ID]:
+                token = self.get_user_token(request.headers)
+                if self.auth_helper_instance.has_read_privs(token):
                     target_index = self.INDICES['indices'][index_without_prefix]['private']
 
         if target_index is None:
