@@ -25,16 +25,16 @@ logger = logging.getLogger(__name__)
 
 
 class SearchAPI:
-    def __init__(self, config, translator_module, assay_type_module=None):
+    def __init__(self, config, translator_module, blueprint=None):
         # Set self based on passed in config parameters
         for key, value in config.items():
             setattr(self, key, value)
 
         self.translator_module = translator_module
-        self.assay_type_module = assay_type_module
 
         # Specify the absolute path of the instance folder and use the config file relative to the instance path
         self.app = Flask(__name__, instance_path=os.path.join(os.path.abspath(os.path.dirname(__file__))))
+        self.app.register_blueprint(blueprint)
 
         @self.app.errorhandler(400)
         def __http_bad_request(e):
@@ -55,16 +55,6 @@ class SearchAPI:
         @self.app.route('/', methods=['GET'])
         def __index():
             return self.index()
-
-        if assay_type_module != None:
-            @self.app.route('/assaytype', methods=['GET'])
-            def __assaytypes():
-                return self.assaytypes()
-
-            @self.app.route('/assaytype/<name>', methods=['GET'])
-            @self.app.route('/assayname', methods=['POST'])
-            def __assayname(name=None):
-                return self.assayname(name)
 
         @self.app.route('/search', methods=['POST'])
         def __search():
@@ -148,44 +138,6 @@ class SearchAPI:
 
     def index(self):
         return "Hello! This is the Search API service :)"
-
-    ####################################################################################################
-    ## Assay type API
-    ####################################################################################################
-
-    def assaytypes(self):
-
-        primary = None
-        simple = False
-        for key, val in request.args.items():
-            if key == 'primary':
-                primary = val.lower() == "true"
-            elif key == 'simple':
-                simple = val.lower() == "true"
-            else:
-                abort(400, f'invalid request parameter {key}')
-
-        if primary is None:
-            name_l = [name for name in self.assay_type_module.AssayType.iter_names()]
-        else:
-            name_l = [name for name in self.assay_type_module.AssayType.iter_names(primary=primary)]
-
-        if simple:
-            return jsonify(result=name_l)
-        else:
-            return jsonify(result=[self.assay_type_module.AssayType(name).to_json() for name in name_l])
-
-    def assayname(self, name=None):
-        if name is None:
-            self.request_json_required(request)
-            try:
-                name = request.json['name']
-            except Exception:
-                abort(400, 'request contains no "name" field')
-        try:
-            return jsonify(self.assay_type_module.AssayType(name).to_json())
-        except Exception as e:
-            abort(400, str(e))
 
     ####################################################################################################
     ## API
