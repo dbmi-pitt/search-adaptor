@@ -34,7 +34,8 @@ class SearchAPI:
 
         # Specify the absolute path of the instance folder and use the config file relative to the instance path
         self.app = Flask(__name__, instance_path=os.path.join(os.path.abspath(os.path.dirname(__file__))))
-        self.app.register_blueprint(blueprint)
+        if blueprint is not None:
+            self.app.register_blueprint(blueprint)
 
         @self.app.errorhandler(400)
         def __http_bad_request(e):
