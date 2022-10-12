@@ -90,12 +90,14 @@ class SearchAPI:
             return self.reindex_all()
 
         @self.app.route('/update/<uuid>', methods=['PUT'])
-        def __update(uuid):
-            return self.update(uuid)
+        @self.app.route('/update/<uuid>/<index>', methods=['PUT'])
+        def __update(uuid, index=None):
+            return self.update(uuid, index)
 
         @self.app.route('/add/<uuid>', methods=['POST'])
-        def __add(uuid):
-            return self.add(uuid)
+        @self.app.route('/add/<uuid>/<index>', methods=['POST'])
+        def __add(uuid, index=None):
+            return self.add(uuid, index)
 
         ####################################################################################################
         ## AuthHelper initialization
@@ -312,7 +314,7 @@ class SearchAPI:
 
         return 'Request of live reindex all documents accepted', 202
 
-    def update(self, uuid):
+    def update(self, uuid, index):
         # Update a specific document with the passed in UUID
         # Takes in a document that will replace the existing one
 
@@ -329,7 +331,7 @@ class SearchAPI:
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(translator.update, uuid, document)
+                    future = executor.submit(translator.update, uuid, document, index)
                     result = future.result()
             except Exception as e:
                 logger.exception(e)
@@ -339,7 +341,7 @@ class SearchAPI:
 
         else:
             try:
-                threading.Thread(target=translator.update, args=[uuid, document]).start()
+                threading.Thread(target=translator.update, args=[uuid, document, index]).start()
 
                 logger.info(f"Started to update document with uuid: {uuid}")
             except Exception as e:
@@ -348,7 +350,7 @@ class SearchAPI:
 
             return f"Request of updating {uuid} accepted", 202
 
-    def add(self, uuid):
+    def add(self, uuid, index):
         # Create a specific document with the passed in UUID
         # Takes in a document in the body of the request
 
@@ -365,7 +367,7 @@ class SearchAPI:
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(translator.add, uuid, document)
+                    future = executor.submit(translator.add, uuid, document, index)
                     result = future.result()
             except Exception as e:
                 logger.exception(e)
@@ -375,7 +377,7 @@ class SearchAPI:
 
         else:
             try:
-                threading.Thread(target=translator.add, args=[uuid, document]).start()
+                threading.Thread(target=translator.add, args=[uuid, document, index]).start()
 
                 logger.info(f"Started to add document with uuid: {uuid}")
             except Exception as e:
