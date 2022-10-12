@@ -22,7 +22,7 @@ class Indexer:
             self.delete_document(entity_id, index_name)
 
         logger.debug(f"Creating document with uuid: {entity_id} at index: {index_name}")
-        self.eswriter.write_or_update_document(index_name=index_name, doc=document, uuid=entity_id)
+        return self.eswriter.write_or_update_document(index_name=index_name, doc=document, uuid=entity_id)
 
     def create_index(self, index_name, index_settings):
         self.eswriter.create_index(index_name, index_settings)
