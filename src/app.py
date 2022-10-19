@@ -65,6 +65,14 @@ class SearchAPI:
         def __search_by_index(index_without_prefix):
             return self.search_by_index(index_without_prefix)
 
+        @self.app.route('/mget', methods=['POST'])
+        def __mget():
+            return self.mget()
+
+        @self.app.route('/<index_without_prefix>/mget', methods=['POST'])
+        def __mget_by_index(index_without_prefix):
+            return self.mget_by_index(index_without_prefix)
+
         @self.app.route('/count', methods=['GET'])
         def __count():
             return self.count()
@@ -186,6 +194,45 @@ class SearchAPI:
 
         # Return the elasticsearch resulting json data as json string
         return execute_query('_search', request, target_index, es_url)
+
+    # Info
+    def mget(self):
+        # Always expect a json body
+        self.request_json_required(request)
+
+        logger.info("======mget with no index provided======")
+        logger.info("default_index: " + self.DEFAULT_INDEX_WITHOUT_PREFIX)
+
+        # Determine the target real index in Elasticsearch to be searched against
+        # Use the DEFAULT_INDEX_WITHOUT_PREFIX since /search doesn't take any index
+        target_index = self.get_target_index(request, self.DEFAULT_INDEX_WITHOUT_PREFIX)
+
+        # get URL for that index
+        es_url = self.INDICES['indices'][self.DEFAULT_INDEX_WITHOUT_PREFIX]['elasticsearch']['url'].strip(
+            '/')
+
+        # Return the elasticsearch resulting json data as json string
+        return execute_query('_mget', request, target_index, es_url)
+
+    # Info
+    def mget_by_index(self, index_without_prefix):
+        # Always expect a json body
+        self.request_json_required(request)
+
+        # Make sure the requested index in URL is valid
+        self.validate_index(index_without_prefix)
+
+        logger.info("======requested index_without_prefix======")
+        logger.info(index_without_prefix)
+
+        # Determine the target real index in Elasticsearch to be searched against
+        target_index = self.get_target_index(request, index_without_prefix)
+
+        # get URL for that index
+        es_url = self.INDICES['indices'][index_without_prefix]['elasticsearch']['url'].strip('/')
+
+        # Return the elasticsearch resulting json data as json string
+        return execute_query('_mget', request, target_index, es_url)
 
     # HTTP GET can be used to execute search with body against ElasticSearch REST API.
     def count(self):
