@@ -3,10 +3,9 @@ import logging
 
 from libs.es_writer import ESWriter
 
-logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.DEBUG,
+logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO,
                     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
-
 
 class Indexer:
     def __init__(self, indices, default_index):
@@ -29,6 +28,9 @@ class Indexer:
 
     def delete_document(self, entity_id, index_name):
         self.eswriter.delete_document(index_name, entity_id)
+
+    def delete_fieldmatch_document(self, index_name, field_name=None, field_value=None):
+        self.eswriter.delete_fieldmatch_document(index_name, field_name, field_value)
 
     def delete_index(self, index_name):
         self.eswriter.delete_index(index_name)

@@ -8,7 +8,7 @@ import sys
 # All the API logging is forwarded to the uWSGI server and gets written into the log file `uwsgo-entity-api.log`
 # Log rotation is handled via logrotate on the host system with a configuration file
 # Do NOT handle log file and rotation via the Python logging to avoid issues with multi-worker processes
-logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d: %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
+logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d: %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
 class ESWriter:
@@ -31,6 +31,16 @@ class ESWriter:
             # Log the full stack trace, prepend a line with our message
             logger.exception(msg)
 
+    # This method uses the "Lucene query string syntax" to run a "query parameter search."
+    # Per the links below, "Query parameter searches do not support the full Elasticsearch Query DSL but
+    # are handy for testing."
+    # https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-delete-by-query.html
+    # https://www.elastic.co/guide/en/elasticsearch/reference/current/search-search.html
+    #
+    # delete_document(self, index_name, uuid) could become a facade for
+    # delete_fieldmatch_document(self, index_name, "uuid", uuid) to transition to Elasticsearch's
+    # Query DSL JSON style.
+    # https://www.elastic.co/guide/en/elasticsearch/reference/current/query-dsl.html
     def delete_document(self, index_name, uuid):
         try:
             headers = {'Content-Type': 'application/json'}
@@ -45,6 +55,31 @@ class ESWriter:
             # Log the full stack trace, prepend a line with our message
             logger.exception(msg)
 
+    def delete_fieldmatch_document(self, index_name, field_name, field_value):
+        try:
+            if not index_name:
+                raise Exception(f"ESWriter.delete_fieldmatch_document() unable to execute with index_name '{index_name}.")
+            post_url = f"{self.elasticsearch_url}/{index_name}/_delete_by_query?conflicts=proceed"
+
+            if field_name and field_value:
+                jsonQuery = f'{{"query": {{"match": {{"{field_name}": "{field_value}"}} }} }}'
+                msgSuccess = f"Deleted doc with field_name='{field_name}', field_value='{field_value}' from index '{index_name}'"
+                msgFailure = f"Failed to delete doc with field_name='{field_name}', field_value='{field_value}' from index '{index_name}'"
+            else:
+                jsonQuery = f'{{ "query": {{ "match_all": {{}} }} }}'
+                msgSuccess = f"Deleted all docs from index '{index_name}'"
+                msgFailure = f"Failed to delete all docs from index '{index_name}'"
+            headers = {'Content-Type': 'application/json'}
+            rspn = requests.post(post_url, headers=headers, data=jsonQuery)
+            if rspn.ok:
+                logger.info(msgSuccess)
+            else:
+                logger.error(msgFailure)
+                logger.error(f"Error Message: {rspn.text}")
+        except Exception as e:
+            msgUnexpected = "Exception encountered during executing ESWriter.delete_fieldmatch_document() with field_name='{field_name}', field_value='{field_value}', index_name='{index_name}'"
+            # Log the full stack trace, prepend a line with our message
+            logger.exception(msgUnexpected)
     def write_or_update_document(self, index_name='index', type_='_doc', doc='', uuid=''):
         try:
             headers = {'Content-Type': 'application/json'}
