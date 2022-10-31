@@ -82,7 +82,7 @@ def get_uuids_from_es(index, es_url):
 
 # Make a call to Elasticsearch
 def execute_query(query_against, request, index, es_url, query=None):
-    supported_query_against = ['_search', '_count']
+    supported_query_against = ['_search', '_count', '_mget']
     separator = ','
 
     if query_against not in supported_query_against:
