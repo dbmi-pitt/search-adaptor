@@ -105,8 +105,8 @@ class SearchAPI:
         def __add(uuid, index=None):
             return self.add(uuid, index)
 
-        @self.app.route('/clear_docs/<index>', methods=['POST'])
-        @self.app.route('/clear_docs/<uuid>/<index>', methods=['POST'])
+        @self.app.route('/clear-docs/<index>', methods=['POST'])
+        @self.app.route('/clear-docs/<index>/<uuid>', methods=['POST'])
         def __clear_docs(index, uuid=None):
             return self.clear_docs(index, uuid)
 
