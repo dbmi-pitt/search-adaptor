@@ -3,10 +3,9 @@ import logging
 
 from libs.es_writer import ESWriter
 
-logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.DEBUG,
+logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO,
                     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
-
 
 class Indexer:
     def __init__(self, indices, default_index):
@@ -22,13 +21,16 @@ class Indexer:
             self.delete_document(entity_id, index_name)
 
         logger.debug(f"Creating document with uuid: {entity_id} at index: {index_name}")
-        self.eswriter.write_or_update_document(index_name=index_name, doc=document, uuid=entity_id)
+        return self.eswriter.write_or_update_document(index_name=index_name, doc=document, uuid=entity_id)
 
     def create_index(self, index_name, index_settings):
         self.eswriter.create_index(index_name, index_settings)
 
     def delete_document(self, entity_id, index_name):
         self.eswriter.delete_document(index_name, entity_id)
+
+    def delete_fieldmatch_document(self, index_name, field_name=None, field_value=None):
+        self.eswriter.delete_fieldmatch_document(index_name, field_name, field_value)
 
     def delete_index(self, index_name):
         self.eswriter.delete_index(index_name)
