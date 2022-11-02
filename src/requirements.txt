@@ -10,4 +10,4 @@ PyYAML>=5.3.1
 # Use the branch name of commons from github for testing new changes made in commons from different branch
 # Default is main branch
 #git+https://github.com/hubmapconsortium/commons.git@main#egg=hubmap-commons
-hubmap-commons==2.1.2
+hubmap-commons==2.1.3
