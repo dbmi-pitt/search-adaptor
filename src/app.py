@@ -203,6 +203,12 @@ class SearchAPI:
         logger.info("======mget with no index provided======")
         logger.info("default_index: " + self.DEFAULT_INDEX_WITHOUT_PREFIX)
 
+        if 'docs' in request.get_json():
+            for item in request.get_json()['docs']:
+                if '_index' in item:
+                    bad_request_error(
+                        "Index may not be specified in request body. To target a specific index, use /<index_without_prefix>/mget")
+
         # Determine the target real index in Elasticsearch to be searched against
         # Use the DEFAULT_INDEX_WITHOUT_PREFIX since /search doesn't take any index
         target_index = self.get_target_index(request, self.DEFAULT_INDEX_WITHOUT_PREFIX)
@@ -224,6 +230,11 @@ class SearchAPI:
 
         logger.info("======requested index_without_prefix======")
         logger.info(index_without_prefix)
+
+        if 'docs' in request.get_json():
+            for item in request.get_json()['docs']:
+                if '_index' in item:
+                    bad_request_error("Index may not be specified in request body. To target a specific index, use /<index_without_prefix>/mget")
 
         # Determine the target real index in Elasticsearch to be searched against
         target_index = self.get_target_index(request, index_without_prefix)
