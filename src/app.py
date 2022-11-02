@@ -207,7 +207,7 @@ class SearchAPI:
             for item in request.get_json()['docs']:
                 if '_index' in item:
                     bad_request_error(
-                        "Index may not be specified in request body. To target a specific index, use /<index_without_prefix>/mget")
+                        "Index may not be specified in request body. To target a specific index, use /<index>/mget")
 
         # Determine the target real index in Elasticsearch to be searched against
         # Use the DEFAULT_INDEX_WITHOUT_PREFIX since /search doesn't take any index
@@ -234,7 +234,7 @@ class SearchAPI:
         if 'docs' in request.get_json():
             for item in request.get_json()['docs']:
                 if '_index' in item:
-                    bad_request_error("Index may not be specified in request body. To target a specific index, use /<index_without_prefix>/mget")
+                    bad_request_error("Index may not be specified in request body. To target a specific index, use /<index>/mgett")
 
         # Determine the target real index in Elasticsearch to be searched against
         target_index = self.get_target_index(request, index_without_prefix)
