@@ -21,8 +21,6 @@ requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
 logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d: %(message)s', level=logging.DEBUG,
                     datefmt='%Y-%m-%d %H:%M:%S')
-logger = logging.getLogger(__name__)
-
 
 class SearchAPI:
     def __init__(self, config, translator_module, blueprint=None):
@@ -98,12 +96,19 @@ class SearchAPI:
             return self.reindex_all()
 
         @self.app.route('/update/<uuid>', methods=['PUT'])
-        def __update(uuid):
-            return self.update(uuid)
+        @self.app.route('/update/<uuid>/<index>', methods=['PUT'])
+        def __update(uuid, index=None):
+            return self.update(uuid, index)
 
         @self.app.route('/add/<uuid>', methods=['POST'])
-        def __add(uuid):
-            return self.add(uuid)
+        @self.app.route('/add/<uuid>/<index>', methods=['POST'])
+        def __add(uuid, index=None):
+            return self.add(uuid, index)
+
+        @self.app.route('/clear-docs/<index>', methods=['POST'])
+        @self.app.route('/clear-docs/<index>/<uuid>', methods=['POST'])
+        def __clear_docs(index, uuid=None):
+            return self.clear_docs(index, uuid)
 
         ####################################################################################################
         ## AuthHelper initialization
@@ -370,7 +375,7 @@ class SearchAPI:
 
         return 'Request of live reindex all documents accepted', 202
 
-    def update(self, uuid):
+    def update(self, uuid, index):
         # Update a specific document with the passed in UUID
         # Takes in a document that will replace the existing one
 
@@ -387,7 +392,7 @@ class SearchAPI:
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(translator.update, uuid, document)
+                    future = executor.submit(translator.update, uuid, document, index)
                     result = future.result()
             except Exception as e:
                 logger.exception(e)
@@ -397,7 +402,7 @@ class SearchAPI:
 
         else:
             try:
-                threading.Thread(target=translator.update, args=[uuid, document]).start()
+                threading.Thread(target=translator.update, args=[uuid, document, index]).start()
 
                 logger.info(f"Started to update document with uuid: {uuid}")
             except Exception as e:
@@ -406,7 +411,7 @@ class SearchAPI:
 
             return f"Request of updating {uuid} accepted", 202
 
-    def add(self, uuid):
+    def add(self, uuid, index):
         # Create a specific document with the passed in UUID
         # Takes in a document in the body of the request
 
@@ -423,7 +428,7 @@ class SearchAPI:
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(translator.add, uuid, document)
+                    future = executor.submit(translator.add, uuid, document, index)
                     result = future.result()
             except Exception as e:
                 logger.exception(e)
@@ -433,7 +438,7 @@ class SearchAPI:
 
         else:
             try:
-                threading.Thread(target=translator.add, args=[uuid, document]).start()
+                threading.Thread(target=translator.add, args=[uuid, document, index]).start()
 
                 logger.info(f"Started to add document with uuid: {uuid}")
             except Exception as e:
@@ -442,13 +447,68 @@ class SearchAPI:
 
             return f"Request of adding {uuid} accepted", 202
 
+    def clear_docs(self, index, uuid):
+        # Clear multiple documents from the specified index, in an app-appropriate way expressed in
+        # a Translator delete_docs() method
+        # Either delete just the documents for the Dataset with the specified UUID, or delete
+        # all the documents in the specified index
+
+        if uuid:
+            msgAck = f"Request to clear documents for uuid '{uuid}' from ES index '{index}' accepted"
+            # Data Admin group not required to clear all documents for a Dataset from the ES index, but
+            # will check write permission for the entity below.
+            token = self.get_user_token(request.headers, admin_access_required=False)
+        else:
+            msgAck = f"Request to clear all documents from ES index '{index}' accepted"
+            # The token needs to belong to the Data Admin group to be able to clear all documents in the ES index.
+            token = self.get_user_token(request.headers, admin_access_required=True)
+
+        if request.is_json:
+            bad_request_error(f"An unexpected JSON body was attached to the request to clear documents from ES index '{index}'.")
+
+        # Check if query parameter is passed to used futures instead of threading
+        asynchronous = request.args.get('async')
+
+        translator = self.init_translator(token)
+
+        # Verify the user has write permission for the entity whose documents are to be cleared from the ES index
+        if uuid:
+            uuidEntity = translator.call_entity_api(uuid, 'entities')
+            entity_group_uuid = uuidEntity['group_uuid']
+            user_groups_by_id_dict = self.auth_helper_instance.get_globus_groups_info()['by_id']
+            if not entity_group_uuid in user_groups_by_id_dict.keys() and \
+               not self.auth_helper_instance.has_data_admin_privs(token):
+                bad_request_error(f"Permission denied for modifying ES index entries for '{uuid}'.")
+
+        if asynchronous:
+            try:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(translator.delete_docs, index, uuid)
+                    result = future.result()
+            except Exception as e:
+                logger.exception(e)
+                internal_server_error(e)
+
+            return result, 202
+
+        else:
+            try:
+                threading.Thread(target=translator.delete_docs, args=[index, uuid]).start()
+
+                logger.info(f"Started to clear documents for uuid '{uuid}' from ES index '{index}'.")
+            except Exception as e:
+                logger.exception(e)
+                internal_server_error(e)
+
+            return msgAck, 202
+
     # Get user information dict based on the http request(headers)
     # `group_required` is a boolean, when True, 'hmgroupids' is in the output
     def get_user_info_for_access_check(self, request, group_required):
         return self.auth_helper_instance.getUserInfoUsingRequest(request, group_required)
 
     """
-    Parase the token from Authorization header
+    Parse the token from Authorization header
 
     Parameters
     ----------
@@ -486,7 +546,6 @@ class SearchAPI:
             # Return a 403 response if the user doesn't belong to Data Admin group
             if not self.auth_helper_instance.has_data_admin_privs(user_token):
                 forbidden_error("Access not granted")
-
         return user_token
 
     """
