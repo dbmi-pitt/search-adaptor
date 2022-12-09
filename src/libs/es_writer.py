@@ -63,12 +63,12 @@ class ESWriter:
 
             if field_name and field_value:
                 jsonQuery = f'{{"query": {{"match": {{"{field_name}": "{field_value}"}} }} }}'
-                msgSuccess = f"Deleted doc with field_name='{field_name}', field_value='{field_value}' from index '{index_name}'"
-                msgFailure = f"Failed to delete doc with field_name='{field_name}', field_value='{field_value}' from index '{index_name}'"
+                msgSuccess = f"Posted delete request for docs with field_name='{field_name}', field_value='{field_value}' from index '{index_name}'"
+                msgFailure = f"Failed to post request to delete doc with field_name='{field_name}', field_value='{field_value}' from index '{index_name}'"
             else:
                 jsonQuery = f'{{ "query": {{ "match_all": {{}} }} }}'
-                msgSuccess = f"Deleted all docs from index '{index_name}'"
-                msgFailure = f"Failed to delete all docs from index '{index_name}'"
+                msgSuccess = f"Posted request to delete all docs from index '{index_name}'"
+                msgFailure = f"Failed to post request to delete all docs from index '{index_name}'"
             headers = {'Content-Type': 'application/json'}
             rspn = requests.post(post_url, headers=headers, data=jsonQuery)
             if rspn.ok:
