@@ -1,6 +1,7 @@
 import concurrent.futures
 import threading
 from pathlib import Path
+import json
 
 from flask import request, Response
 # HuBMAP commons
@@ -110,6 +111,16 @@ class SearchAPI:
         def __clear_docs(index, uuid=None):
             return self.clear_docs(index, uuid)
 
+        @self.app.route('/<index>/scroll-search', methods=['POST'])
+        # This may be a non-AWS Gateway endpoint, initially used by files-api,
+        # possibly (@TODO) returning more than 10Mb, and possibly in over 30 secs.
+        def __scroll_search(index):
+            try:
+                return self.scrollsearch_real_index(target_index=index)
+            except requests.HTTPError as he:
+                # OpenSearch errors come back in the JSON, so return them that way.
+                return jsonify(he.response.json()), he.response.status_code
+
         ####################################################################################################
         ## AuthHelper initialization
         ####################################################################################################
@@ -177,6 +188,154 @@ class SearchAPI:
 
         # Return the elasticsearch resulting json data as json string
         return execute_query('_search', request, target_index, es_url)
+
+    def _open_scroll(self, target_index, scroll_open_minutes, oss_base_url, json_dict):
+        logger.debug(f"_open_scroll for target_index={target_index}, scroll_open_minutes={scroll_open_minutes}")
+
+        # Form a URL which passes scroll as a parameter, with a string value, to create a search scroll.
+        target_url = f"{oss_base_url}/{target_index}/_search?scroll={scroll_open_minutes}m"
+        logger.debug(f"Opening scroll using target_url={target_url}")
+
+        response = requests.post(target_url, json=json_dict)
+
+        if response.status_code == 200:
+            logger.debug(f"Scroll opened with _scroll_id='{response.json()['_scroll_id']}'")
+            logger.debug(f"during open, {len(response.json()['hits']['hits'])} returned.")
+        else:
+            raise requests.exceptions.HTTPError(response=response)
+            return f"Scroll open failed, with status_code={response.status_code}, {response.reason}.", response.reason
+
+        # After a successful call, check if the response payload exceeds the size that
+        # can pass through the AWS Gateway.
+        if response.status_code == 200:
+           check_response_payload_size(response.text)
+
+        # Return the Elasticsearch resulting json data and status code
+        if response.status_code == 200:
+            return jsonify(response.json()), response.status_code
+        else:
+            return f"Scroll open response  is {response.status_code}, {response.reason}.", response.status_code
+
+    def _read_scroll(self, scroll_open_minutes, oss_base_url, json_dict):
+        # Extend the scroll open time if there is not one specified in the JSON payload.
+        # N.B. This specification of an extended scroll open time in JSON is not interchangeable with
+        #      specification the initial scroll open time as a parameter by _open_scroll()
+        if not 'scroll' in json_dict:
+            json_dict['scroll'] = f"{scroll_open_minutes}m"
+        # Expect the caller of this private method to have raised an exception if it
+        # could not provide scroll_id in json_dict.
+        scroll_id = json_dict['scroll_id'] if 'scroll_id' in json_dict else None
+        logger.debug(f"_read_scroll with scroll_id='{scroll_id}'")
+
+        # Form a URL which passes scroll as a parameter, with a string value, to create a search scroll.
+        target_url = f"{oss_base_url}/_search/scroll"
+        logger.debug(f"Opening scroll using target_url={target_url}")
+
+        response = requests.post(target_url, json=json_dict)
+
+        if response.status_code == 200:
+            logger.debug(f"Scroll read with _scroll_id='{response.json()['_scroll_id']}'")
+            logger.debug(f"during read, {len(response.json()['hits']['hits'])} returned.")
+        else:
+            return f"Scroll read failed, with status_code={response.status_code}, {response.reason}.", response.reason
+
+        # After a successful call, check if the response payload exceeds the size that
+        # can pass through the AWS Gateway.
+        if response.status_code == 200:
+           check_response_payload_size(response.text)
+
+        # Return the Elasticsearch resulting json data and status code
+        if response.status_code == 200:
+            return jsonify(response.json()), response.status_code
+        else:
+            return f"Scroll read response  is {response.status_code}, {response.reason}.", response.status_code
+
+    def _close_scroll(self, scroll_id, oss_base_url):
+        target_url = f"{oss_base_url}/_search/scroll/{scroll_id}"
+        logger.debug(f"Closing scroll using target_url={target_url}")
+        response = requests.delete(target_url)
+        if response.status_code == 200:
+            return "Scroll deleted", response.status_code
+        else:
+            return f"Scroll delete response  is {response.status_code}, {response.reason}.", response.status_code
+
+    # Use the OpenSearch scroll API (https://opensearch.org/docs/latest/api-reference/scroll/)
+    # to open a scroll which will be navigated in the specified time when scroll_id is not
+    # provided, retrieve more results when a scroll_id is provided, and close a scroll when
+    # zero is the specified time.
+    #
+    # This method works with the names of OpenSearch indices provided in the target_index
+    # parameter, rather than a composite index name from search-config.yaml.
+    def scrollsearch_real_index(self, target_index):
+
+        # this code looks like it wants to get everything, but only gets 10,000...
+        # es_url = self.INDICES['indices']['entities']['elasticsearch']['url'].strip('/')
+        # get_uuids_from_es('hm_dev_consortium_entities', es_url) # returns 10K of 18K-ish
+
+        # Always expect a json body, which should at least contain 'scroll_open_minutes'
+        self.request_json_required(request)
+        json_args = request.get_json()
+
+        # Capture the open scroll context time in minutes from a JSON value custom to this endpoint.
+        scroll_open_minutes = json_args['scroll_open_minutes'] if 'scroll_open_minutes' in json_args else None
+        # Remove scroll_open_minutes from json_args.  When needed to form a parameter to open a scroll, or
+        # to form the 'scroll' JSON entry for reading a scroll, use the scroll_open_minutes value with 'm' appended.
+        # Return default of None so do not get a KeyError if the key is not in the dictionary.
+        json_args.pop('scroll_open_minutes', None)
+
+        scroll_id = json_args['scroll_id'] if 'scroll_id' in json_args else None
+
+        # scroll_open_minutes is required for each operation with the scroll, so
+        # verify acceptable number on each request.
+        if scroll_open_minutes is not None and (not isinstance(scroll_open_minutes, int) or scroll_open_minutes < 0):
+            logger.error(f"Unable to recognize scroll_open_minutes={scroll_open_minutes} as positive integer.")
+            bad_request_error(f"Unable to recognize scroll_open_minutes={scroll_open_minutes} as positive integer.")
+
+        # Verify the target_index from the request is recognized by this service.  Rather than check against
+        # hard-coded acceptable key names which may contain index names, just use the provided index name if
+        # it happens to exactly match the value of any key in this service's configuration.
+        #
+        # If the target_index is recognized, grab the associated OpenSearch Service URL under the same heading.
+        recognized_opensearch_index = False
+        configured_base_url = None
+        if target_index is not None:
+            for composite_index_name in self.INDICES['indices']:
+                for composite_index_type in self.INDICES['indices'][composite_index_name]:
+                    # Rather than check against acceptable key names which can contain index names, just
+                    # use the provided index name if it happens to exactly match the value of any key.
+                    #@TODO-kbkbkb change to check ['public','private'] if we know that will always be the exhaustive list
+                    if target_index == self.INDICES['indices'][composite_index_name][composite_index_type]:
+                        recognized_opensearch_index = True
+                        configured_base_url = self.INDICES['indices'][composite_index_name]['elasticsearch']['url'].strip('/')
+                        break
+            if not recognized_opensearch_index:
+                logger.error(f"target_index={target_index} is not recognized for scroll search.")
+                bad_request_error(f"target_index={target_index} is not recognized for scroll search.")
+
+        # Deletion of the scroll is indicated by zero minutes on the request
+        if scroll_open_minutes == 0:
+            if scroll_id is None:
+                logger.error(f"scroll_id ={scroll_id} when scroll_open_minutes={scroll_open_minutes} indicates scroll delete operation.")
+                bad_request_error("Missing scroll_id for scroll delete operation.")
+            else:
+                return self._close_scroll(scroll_id, configured_base_url)
+
+        # Continuing to read from an open scroll is indicated by the presence of scroll_id and
+        # a non-zero scroll_open_minutes
+        if scroll_id is not None and scroll_open_minutes > 0:
+            return self._read_scroll(scroll_open_minutes, configured_base_url, json_args)
+
+        # Open a scroll for the OpenSearch index as indicated by the absence of scroll_id and
+        # a non-zero scroll_open_minutes
+        if scroll_id is None and scroll_open_minutes > 0:
+            return self._open_scroll(target_index, scroll_open_minutes, configured_base_url, json_args)
+
+        # If this point is reached, no recognized operation was done.
+        logger.error(f"Unable to determine operation when"
+                        f" target_index={target_index},"
+                        f" scroll_id={scroll_id}, and"
+                        f" scroll_open_minutes={scroll_open_minutes}.")
+        bad_request_error("Unable to work with scroll given parameters.")
 
     # Both HTTP GET and HTTP POST can be used to execute search with body against ElasticSearch REST API.
     # BUT AWS API Gateway only supports POST with request body
