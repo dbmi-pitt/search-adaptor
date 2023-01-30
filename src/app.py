@@ -116,7 +116,7 @@ class SearchAPI:
         # possibly (@TODO) returning more than 10Mb, and possibly in over 30 secs.
         def __scroll_search(index):
             try:
-                return self.scrollsearch_real_index(target_index=index)
+                return self.scrollsearch_index(composite_index=index)
             except requests.HTTPError as he:
                 # OpenSearch errors come back in the JSON, so return them that way.
                 return jsonify(he.response.json()), he.response.status_code
@@ -264,13 +264,9 @@ class SearchAPI:
     # provided, retrieve more results when a scroll_id is provided, and close a scroll when
     # zero is the specified time.
     #
-    # This method works with the names of OpenSearch indices provided in the target_index
-    # parameter, rather than a composite index name from search-config.yaml.
-    def scrollsearch_real_index(self, target_index):
-
-        # this code looks like it wants to get everything, but only gets 10,000...
-        # es_url = self.INDICES['indices']['entities']['elasticsearch']['url'].strip('/')
-        # get_uuids_from_es('hm_dev_consortium_entities', es_url) # returns 10K of 18K-ish
+    # This method works with a composite index name from search-config.yaml.  The actual OpenSearch
+    # index searched is determined by get_target_index() from the token presented and composite_index argument.
+    def scrollsearch_index(self, composite_index):
 
         # Always expect a json body, which should at least contain 'scroll_open_minutes'
         self.request_json_required(request)
@@ -278,12 +274,12 @@ class SearchAPI:
 
         # Capture the open scroll context time in minutes from a JSON value custom to this endpoint.
         scroll_open_minutes = json_args['scroll_open_minutes'] if 'scroll_open_minutes' in json_args else None
-        # Remove scroll_open_minutes from json_args.  When needed to form a parameter to open a scroll, or
-        # to form the 'scroll' JSON entry for reading a scroll, use the scroll_open_minutes value with 'm' appended.
+        # Remove scroll_open_minutes from json_args.  When needed to form a parameter recognized by the
+        # OpenSearch API to open a scroll, or to form the 'scroll' JSON entry for reading a scroll, use
+        # the scroll_open_minutes value with 'm' appended.
+        #
         # Return default of None so do not get a KeyError if the key is not in the dictionary.
         json_args.pop('scroll_open_minutes', None)
-
-        scroll_id = json_args['scroll_id'] if 'scroll_id' in json_args else None
 
         # scroll_open_minutes is required for each operation with the scroll, so
         # verify acceptable number on each request.
@@ -291,26 +287,13 @@ class SearchAPI:
             logger.error(f"Unable to recognize scroll_open_minutes={scroll_open_minutes} as positive integer.")
             bad_request_error(f"Unable to recognize scroll_open_minutes={scroll_open_minutes} as positive integer.")
 
-        # Verify the target_index from the request is recognized by this service.  Rather than check against
-        # hard-coded acceptable key names which may contain index names, just use the provided index name if
-        # it happens to exactly match the value of any key in this service's configuration.
-        #
-        # If the target_index is recognized, grab the associated OpenSearch Service URL under the same heading.
-        recognized_opensearch_index = False
-        configured_base_url = None
-        if target_index is not None:
-            for composite_index_name in self.INDICES['indices']:
-                for composite_index_type in self.INDICES['indices'][composite_index_name]:
-                    # Rather than check against acceptable key names which can contain index names, just
-                    # use the provided index name if it happens to exactly match the value of any key.
-                    #@TODO-kbkbkb change to check ['public','private'] if we know that will always be the exhaustive list
-                    if target_index == self.INDICES['indices'][composite_index_name][composite_index_type]:
-                        recognized_opensearch_index = True
-                        configured_base_url = self.INDICES['indices'][composite_index_name]['elasticsearch']['url'].strip('/')
-                        break
-            if not recognized_opensearch_index:
-                logger.error(f"target_index={target_index} is not recognized for scroll search.")
-                bad_request_error(f"target_index={target_index} is not recognized for scroll search.")
+        scroll_id = json_args['scroll_id'] if 'scroll_id' in json_args else None
+
+        if composite_index not in self.INDICES['indices']:
+            msg = f"'{composite_index}' not a configured index."
+            logger.error(msg)
+            bad_request_error(msg)
+        configured_base_url = self.INDICES['indices'][composite_index]['elasticsearch']['url'].strip('/')
 
         # Deletion of the scroll is indicated by zero minutes on the request
         if scroll_open_minutes == 0:
@@ -325,8 +308,9 @@ class SearchAPI:
         if scroll_id is not None and scroll_open_minutes > 0:
             return self._read_scroll(scroll_open_minutes, configured_base_url, json_args)
 
-        # Open a scroll for the OpenSearch index as indicated by the absence of scroll_id and
-        # a non-zero scroll_open_minutes
+        # # Open a scroll for the OpenSearch index as indicated by the absence of scroll_id,
+        # # a non-zero scroll_open_minutes, and a specification of the scope of the index to use.
+        target_index = self.get_target_index(request, composite_index)
         if scroll_id is None and scroll_open_minutes > 0:
             return self._open_scroll(target_index, scroll_open_minutes, configured_base_url, json_args)
 
