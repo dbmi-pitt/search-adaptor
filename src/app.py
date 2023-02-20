@@ -98,18 +98,21 @@ class SearchAPI:
 
         @self.app.route('/update/<uuid>', methods=['PUT'])
         @self.app.route('/update/<uuid>/<index>', methods=['PUT'])
-        def __update(uuid, index=None):
-            return self.update(uuid, index)
+        @self.app.route('/update/<uuid>/<index>/<scope>', methods=['PUT'])
+        def __update(uuid, index=None, scope=None):
+            return self.update(uuid, index, scope)
 
         @self.app.route('/add/<uuid>', methods=['POST'])
         @self.app.route('/add/<uuid>/<index>', methods=['POST'])
-        def __add(uuid, index=None):
-            return self.add(uuid, index)
+        @self.app.route('/add/<uuid>/<index>/<scope>', methods=['POST'])
+        def __add(uuid, index=None, scope=None):
+            return self.add(uuid, index, scope)
 
         @self.app.route('/clear-docs/<index>', methods=['POST'])
         @self.app.route('/clear-docs/<index>/<uuid>', methods=['POST'])
-        def __clear_docs(index, uuid=None):
-            return self.clear_docs(index, uuid)
+        @self.app.route('/clear-docs/<index>/<uuid>/<scope>', methods=['POST'])
+        def __clear_docs(index, uuid=None, scope=None):
+            return self.clear_docs(index=index, scope=scope, uuid=uuid)
 
         @self.app.route('/<index>/scroll-search', methods=['POST'])
         # This may be a non-AWS Gateway endpoint, initially used by files-api,
@@ -188,6 +191,15 @@ class SearchAPI:
 
         # Return the elasticsearch resulting json data as json string
         return execute_query('_search', request, target_index, es_url)
+
+    # Verify "modify" permissions for a specified Dataset for the token presented.
+    def _verify_dataset_permission(self, dataset_uuid, token, translator):
+        Dataset = translator.call_entity_api(dataset_uuid, 'entities')
+        dataset_group_uuid = Dataset['group_uuid']
+        user_groups_by_id_dict = self.auth_helper_instance.get_globus_groups_info()['by_id']
+        if not dataset_group_uuid in user_groups_by_id_dict.keys() and \
+           not self.auth_helper_instance.has_data_admin_privs(token):
+            bad_request_error(f"Permission denied for modifying index entries for '{dataset_uuid}'.")
 
     def _open_scroll(self, target_index, scroll_open_minutes, oss_base_url, json_dict):
         logger.debug(f"_open_scroll for target_index={target_index}, scroll_open_minutes={scroll_open_minutes}")
@@ -518,12 +530,17 @@ class SearchAPI:
 
         return 'Request of live reindex all documents accepted', 202
 
-    def update(self, uuid, index):
+    def update(self, uuid, index, scope):
         # Update a specific document with the passed in UUID
         # Takes in a document that will replace the existing one
 
         # Always expect a json body
         self.request_json_required(request)
+
+        # Make sure the index is a composite index from configuration, and
+        # the scope is valid for the composite index.
+        self.validate_index(index) if index else None
+        self.validate_scope(index, scope) if scope else None
 
         token = self.get_user_token(request.headers)
         document = request.json
@@ -535,8 +552,10 @@ class SearchAPI:
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(translator.update, uuid, document, index)
+                    future = executor.submit(translator.update, uuid, document, index, scope)
                     result = future.result()
+            except ValueError as ve:
+                return str(ve), 400
             except Exception as e:
                 logger.exception(e)
                 internal_server_error(e)
@@ -545,7 +564,7 @@ class SearchAPI:
 
         else:
             try:
-                threading.Thread(target=translator.update, args=[uuid, document, index]).start()
+                threading.Thread(target=translator.update, args=[uuid, document, index, scope]).start()
 
                 logger.info(f"Started to update document with uuid: {uuid}")
             except Exception as e:
@@ -554,12 +573,17 @@ class SearchAPI:
 
             return f"Request of updating {uuid} accepted", 202
 
-    def add(self, uuid, index):
+    def add(self, uuid, index, scope):
         # Create a specific document with the passed in UUID
         # Takes in a document in the body of the request
 
         # Always expect a json body
         self.request_json_required(request)
+
+        # Make sure the index is a composite index from configuration, and
+        # the scope is valid for the composite index.
+        self.validate_index(index) if index else None
+        self.validate_scope(index, scope) if scope else None
 
         token = self.get_user_token(request.headers)
         document = request.json
@@ -571,8 +595,10 @@ class SearchAPI:
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(translator.add, uuid, document, index)
+                    future = executor.submit(translator.add, uuid, document, index, scope)
                     result = future.result()
+            except ValueError as ve:
+                return str(ve), 400
             except Exception as e:
                 logger.exception(e)
                 internal_server_error(e)
@@ -581,7 +607,7 @@ class SearchAPI:
 
         else:
             try:
-                threading.Thread(target=translator.add, args=[uuid, document, index]).start()
+                threading.Thread(target=translator.add, args=[uuid, document, index, scope]).start()
 
                 logger.info(f"Started to add document with uuid: {uuid}")
             except Exception as e:
@@ -590,44 +616,91 @@ class SearchAPI:
 
             return f"Request of adding {uuid} accepted", 202
 
-    def clear_docs(self, index, uuid):
-        # Clear multiple documents from the specified index, in an app-appropriate way expressed in
-        # a Translator delete_docs() method
-        # Either delete just the documents for the Dataset with the specified UUID, or delete
-        # all the documents in the specified index
+    def clear_docs(self, index, scope, uuid):
+        # Clear multiple documents from the specified composite index, in an
+        # app-appropriate way expressed in a Translator delete_docs() method.
+        # Either delete just the documents for the Dataset with the specified UUID,
+        # or delete all the documents in the specified index
+
+        # Make sure the index is a composite index from configuration, and
+        # the scope is valid for the composite index.
+        self.validate_index(index) if index else None
+        self.validate_scope(index, scope) if scope else None
 
         if uuid:
-            msgAck = f"Request to clear documents for uuid '{uuid}' from ES index '{index}' accepted"
+            msgAck = (  f"Request to clear documents for uuid '{uuid}' from index '{index}'"
+                        f", scope '{scope}',"
+                        f" accepted")
             # Data Admin group not required to clear all documents for a Dataset from the ES index, but
             # will check write permission for the entity below.
             token = self.get_user_token(request.headers, admin_access_required=False)
         else:
-            msgAck = f"Request to clear all documents from ES index '{index}' accepted"
+            msgAck = f"Request to clear all documents from index '{index}', scope '{scope}' accepted"
             # The token needs to belong to the Data Admin group to be able to clear all documents in the ES index.
             token = self.get_user_token(request.headers, admin_access_required=True)
 
         if request.is_json:
-            bad_request_error(f"An unexpected JSON body was attached to the request to clear documents from ES index '{index}'.")
+            bad_request_error(f"An unexpected JSON body was attached to the request to clear documents from ES index '{index}', scope '{scope}'.")
 
         # Check if query parameter is passed to used futures instead of threading
         asynchronous = request.args.get('async')
 
         translator = self.init_translator(token)
 
-        # Verify the user has write permission for the entity whose documents are to be cleared from the ES index
         if uuid:
-            uuidEntity = translator.call_entity_api(uuid, 'entities')
-            entity_group_uuid = uuidEntity['group_uuid']
-            user_groups_by_id_dict = self.auth_helper_instance.get_globus_groups_info()['by_id']
-            if not entity_group_uuid in user_groups_by_id_dict.keys() and \
-               not self.auth_helper_instance.has_data_admin_privs(token):
-                bad_request_error(f"Permission denied for modifying ES index entries for '{uuid}'.")
+            try:
+                # If the uuid is for a Dataset, verify the user has write permission for the Dataset before
+                # clearing any of the file info documents from the OpenSearch index
+                self._verify_dataset_permission(dataset_uuid=uuid, token=token, translator=translator)
+                logger.log(logging.DEBUG-1
+                           ,f"Request received to delete file info documents in Dataset {uuid}.")
+            except requests.HTTPError as heDataset:
+                # If entity-api threw an exception trying to retrieve the entity for the uuid, it
+                # is possible that it is the UUID of a File (which is not in Neo4j.) See if a
+                # file info document can be retrieved from an OpenSearch index, so the Dataset permissions
+                # can be checked.
+
+                # Determine the target index in OpenSearch to be searched to check for the File's file info document.
+                target_index = self.INDICES['indices'][index][scope]
+                file_info_query_dict = {"query": {"match": {"file_uuid": uuid}}
+                                        ,"_source": ["dataset_uuid"]}
+                configured_base_url = self.INDICES['indices'][index]['elasticsearch']['url'].strip('/')
+                target_url = f"{configured_base_url}/{target_index}/_search"
+                logger.debug(f"For uuid={uuid}, trying to retrieve a file info document using target_url={target_url}")
+
+                response = requests.get(url=target_url
+                                        ,headers={'Content-Type': 'application/json'}
+                                        ,json=file_info_query_dict)
+                if response.status_code == 200 and len(json.loads(response.text)['hits']['hits']) == 1:
+                    dataset_uuid = json.loads(response.text)['hits']['hits'][0]['_source']['dataset_uuid']
+                    try:
+                        # If the uuid is for a Dataset, verify the user has write permission for the Dataset before
+                        # clearing any of the file info documents from the OpenSearch index
+                        self._verify_dataset_permission(dataset_uuid=dataset_uuid, token=token, translator=translator)
+                        logger.log(logging.DEBUG - 1
+                                   , f"Request received to delete file info document of File {uuid}'"
+                                     f" in Dataset {dataset_uuid}.")
+                    except requests.HTTPError as heDatasetOfFile:
+                        msg = ( f"For File uuid '{uuid}' with Dataset uuid '{dataset_uuid}, unable to retrieve"
+                                f" Dataset from index {target_index} to verify permissions.")
+                        logger.log( logging.DEBUG - 1
+                                    ,msg)
+                        return msg, 404
+                else:
+                    msg = ( f"Unable to determine OpenSearch mapping field for matching, due"
+                            f" to being unable to retrieve a Dataset or File entity for uuid '{uuid}'."
+                            f" from index {target_index}")
+                    logger.log(logging.DEBUG - 1
+                               , msg)
+                    return msg, 404
 
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(translator.delete_docs, index, uuid)
+                    future = executor.submit(translator.delete_docs, index, scope, uuid)
                     result = future.result()
+            except ValueError as ve:
+                return str(ve), 400
             except Exception as e:
                 logger.exception(e)
                 internal_server_error(e)
@@ -636,9 +709,9 @@ class SearchAPI:
 
         else:
             try:
-                threading.Thread(target=translator.delete_docs, args=[index, uuid]).start()
+                threading.Thread(target=translator.delete_docs, args=[index, scope, uuid]).start()
 
-                logger.info(f"Started to clear documents for uuid '{uuid}' from ES index '{index}'.")
+                logger.info(f"Started to clear documents for uuid '{uuid}' from ES index '{index}', scope '{scope}'.")
             except Exception as e:
                 logger.exception(e)
                 internal_server_error(e)
@@ -757,6 +830,18 @@ class SearchAPI:
 
         if index_without_prefix not in indices:
             bad_request_error(f"Invalid index name. Use one of the following: {separator.join(indices)}")
+
+    # Given a scope for a composite index from a user request, confirm there is
+    # a known OpenSearch index configured for the composite index with that scope.
+    def validate_scope(self, validated_index, scope):
+        # N.B. use of self.INDICES['indices'][validated_index].keys() will allow bad values for
+        # scope to pass validation only to fail when trying to find the correct OpenSearch index
+        # name. Will also offer spurious names in the error message.
+        # But not currently for public usage, so live with it until willing to modify config YAML.
+        scopes = self.INDICES['indices'][validated_index].keys()
+        if scope not in scopes:
+            bad_request_error(  f"Invalid scope '{scope}' for index '{validated_index}'."
+                                f" Use one of the following: {', '.join(scopes)}")
 
     # Determine the target real index in Elasticsearch bases on the request header and given index (without prefix)
     # The Authorization header with globus token is optional
