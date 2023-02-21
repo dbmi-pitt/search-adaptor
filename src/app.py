@@ -647,6 +647,7 @@ class SearchAPI:
 
         translator = self.init_translator(token)
 
+        target_index_dict = {scope: 'TBD'} if scope else {'public': 'TBD', 'private': 'TBD'}
         if uuid:
             try:
                 # If the uuid is for a Dataset, verify the user has write permission for the Dataset before
@@ -654,6 +655,7 @@ class SearchAPI:
                 self._verify_dataset_permission(dataset_uuid=uuid, token=token, translator=translator)
                 logger.log(logging.DEBUG-1
                            ,f"Request received to delete file info documents in Dataset {uuid}.")
+                target_index_dict[scope] = 'FOUND'
             except requests.HTTPError as heDataset:
                 # If entity-api threw an exception trying to retrieve the entity for the uuid, it
                 # is possible that it is the UUID of a File (which is not in Neo4j.) See if a
@@ -661,37 +663,49 @@ class SearchAPI:
                 # can be checked.
 
                 # Determine the target index in OpenSearch to be searched to check for the File's file info document.
-                target_index = self.INDICES['indices'][index][scope]
-                file_info_query_dict = {"query": {"match": {"file_uuid": uuid}}
-                                        ,"_source": ["dataset_uuid"]}
-                configured_base_url = self.INDICES['indices'][index]['elasticsearch']['url'].strip('/')
-                target_url = f"{configured_base_url}/{target_index}/_search"
-                logger.debug(f"For uuid={uuid}, trying to retrieve a file info document using target_url={target_url}")
+                for composite_scope in target_index_dict.keys():
+                    target_index = self.INDICES['indices'][index][composite_scope]
+                    file_info_query_dict = {"query": {"match": {"file_uuid": uuid}}
+                                            ,"_source": ["dataset_uuid"]}
+                    configured_base_url = self.INDICES['indices'][index]['elasticsearch']['url'].strip('/')
+                    target_url = f"{configured_base_url}/{target_index}/_search"
+                    logger.debug(f"For uuid={uuid}, trying to retrieve a file info document using target_url={target_url}")
 
-                response = requests.get(url=target_url
-                                        ,headers={'Content-Type': 'application/json'}
-                                        ,json=file_info_query_dict)
-                if response.status_code == 200 and len(json.loads(response.text)['hits']['hits']) == 1:
-                    dataset_uuid = json.loads(response.text)['hits']['hits'][0]['_source']['dataset_uuid']
-                    try:
-                        # If the uuid is for a Dataset, verify the user has write permission for the Dataset before
-                        # clearing any of the file info documents from the OpenSearch index
-                        self._verify_dataset_permission(dataset_uuid=dataset_uuid, token=token, translator=translator)
+                    response = requests.get(url=target_url
+                                            ,headers={'Content-Type': 'application/json'}
+                                            ,json=file_info_query_dict)
+                    if response.status_code == 200 and len(json.loads(response.text)['hits']['hits']) == 1:
+                        target_index_dict[composite_scope] = 'FOUND'
+                        dataset_uuid = json.loads(response.text)['hits']['hits'][0]['_source']['dataset_uuid']
+                        try:
+                            # If the uuid is for a Dataset, verify the user has write permission for the Dataset before
+                            # clearing any of the file info documents from the OpenSearch index
+                            self._verify_dataset_permission(dataset_uuid=dataset_uuid, token=token, translator=translator)
+                            logger.log(logging.DEBUG - 1
+                                       , f"Request received to delete file info document of File {uuid}'"
+                                         f" in Dataset {dataset_uuid}.")
+                        except requests.HTTPError as heDatasetOfFile:
+                            msg = ( f"For File uuid '{uuid}' with Dataset uuid '{dataset_uuid}, unable to retrieve"
+                                    f" Dataset from index {target_index} to verify permissions.")
+                            logger.log( logging.DEBUG - 1
+                                        ,msg)
+                            target_index_dict[composite_scope] = msg
+                    else:
+                        msg = ( f"Unable to determine OpenSearch mapping field for matching, due"
+                                f" to being unable to retrieve a Dataset or File entity for uuid '{uuid}'."
+                                f" from index {target_index}")
                         logger.log(logging.DEBUG - 1
-                                   , f"Request received to delete file info document of File {uuid}'"
-                                     f" in Dataset {dataset_uuid}.")
-                    except requests.HTTPError as heDatasetOfFile:
-                        msg = ( f"For File uuid '{uuid}' with Dataset uuid '{dataset_uuid}, unable to retrieve"
-                                f" Dataset from index {target_index} to verify permissions.")
-                        logger.log( logging.DEBUG - 1
-                                    ,msg)
-                        return msg, 404
-                else:
-                    msg = ( f"Unable to determine OpenSearch mapping field for matching, due"
-                            f" to being unable to retrieve a Dataset or File entity for uuid '{uuid}'."
-                            f" from index {target_index}")
-                    logger.log(logging.DEBUG - 1
-                               , msg)
+                                   , msg)
+                        target_index_dict[composite_scope] = msg
+
+                # After looking everywhere requested for a File or Dataset with the uuid, determine
+                # if it is available anywhere before proceeding.
+                uuid_found_in_index = False
+                for composite_scope in target_index_dict.keys():
+                    uuid_found_in_index = uuid_found_in_index or target_index_dict[composite_scope] == 'FOUND'
+                if not uuid_found_in_index:
+                    msg = (f"Unable to retrieve a Dataset or File entity for uuid '{uuid}' from"
+                           f" from the indices [{', '.join(target_index_dict.keys())}].")
                     return msg, 404
 
         if asynchronous:
@@ -711,7 +725,7 @@ class SearchAPI:
             try:
                 threading.Thread(target=translator.delete_docs, args=[index, scope, uuid]).start()
 
-                logger.info(f"Started to clear documents for uuid '{uuid}' from ES index '{index}', scope '{scope}'.")
+                logger.info(f"Started to clear documents for uuid '{uuid}' from index '{index}', scope '{scope}'.")
             except Exception as e:
                 logger.exception(e)
                 internal_server_error(e)
@@ -829,7 +843,7 @@ class SearchAPI:
         indices = self.INDICES['indices'].keys()
 
         if index_without_prefix not in indices:
-            bad_request_error(f"Invalid index name. Use one of the following: {separator.join(indices)}")
+            bad_request_error(f"Invalid index name '{index_without_prefix}'. Use one of the following: {separator.join(indices)}")
 
     # Given a scope for a composite index from a user request, confirm there is
     # a known OpenSearch index configured for the composite index with that scope.
