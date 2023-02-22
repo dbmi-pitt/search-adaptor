@@ -30,7 +30,7 @@ class Indexer:
         self.eswriter.delete_document(index_name, entity_id)
 
     def delete_fieldmatch_document(self, index_name, field_name=None, field_value=None):
-        self.eswriter.delete_fieldmatch_document(index_name, field_name, field_value)
+        return self.eswriter.delete_fieldmatch_document(index_name, field_name, field_value)
 
     def delete_index(self, index_name):
         self.eswriter.delete_index(index_name)
