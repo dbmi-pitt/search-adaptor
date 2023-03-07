@@ -73,13 +73,17 @@ class ESWriter:
             rspn = requests.post(post_url, headers=headers, data=jsonQuery)
             if rspn.ok:
                 logger.info(msgSuccess)
+                return msgSuccess, 200
             else:
                 logger.error(msgFailure)
                 logger.error(f"Error Message: {rspn.text}")
+                return msgFailure, 400
         except Exception as e:
             msgUnexpected = "Exception encountered during executing ESWriter.delete_fieldmatch_document() with field_name='{field_name}', field_value='{field_value}', index_name='{index_name}'"
             # Log the full stack trace, prepend a line with our message
             logger.exception(msgUnexpected)
+            return msgUnexpected, 400
+
     def write_or_update_document(self, index_name='index', type_='_doc', doc='', uuid=''):
         try:
             headers = {'Content-Type': 'application/json'}
