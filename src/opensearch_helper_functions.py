@@ -194,7 +194,7 @@ flask.Response
 
 def check_response_payload_size(response_text):
     search_result_payload = len(response_text.encode('utf-8'))
-    aws_api_gateway_payload_max =  500 #kbkbkb undo 10485760
+    aws_api_gateway_payload_max = 10485760
 
     if search_result_payload > aws_api_gateway_payload_max:
         msg = f'Search result length {search_result_payload} is larger than allowed maximum of {aws_api_gateway_payload_max} bytes'
