@@ -1,4 +1,5 @@
 import concurrent.futures
+import inspect
 import threading
 from pathlib import Path
 import json
@@ -30,6 +31,13 @@ class SearchAPI:
             setattr(self, key, value)
 
         self.translator_module = translator_module
+
+        self.S3_settings_dict = {   'large_response_threshold': self.LARGE_RESPONSE_THRESHOLD
+                                    ,'aws_access_key_id': self.AWS_ACCESS_KEY_ID
+                                    ,'aws_secret_access_key': self.AWS_SECRET_ACCESS_KEY
+                                    ,'aws_s3_bucket_name': self.AWS_S3_BUCKET_NAME
+                                    ,'aws_object_url_expiration_in_secs': self.AWS_OBJECT_URL_EXPIRATION_IN_SECS
+                                    ,'service_configured_obj_prefix': self.AWS_S3_OBJECT_PREFIX}
 
         # Specify the absolute path of the instance folder and use the config file relative to the instance path
         self.app = Flask(__name__, instance_path=os.path.join(os.path.abspath(os.path.dirname(__file__))))
@@ -189,8 +197,20 @@ class SearchAPI:
         es_url = self.INDICES['indices'][self.DEFAULT_INDEX_WITHOUT_PREFIX]['elasticsearch']['url'].strip(
             '/')
 
-        # Return the elasticsearch resulting json data as json string
-        return execute_query('_search', request, target_index, es_url)
+        # Set a prefix used for naming any objects that end up in S3 which is
+        # specific to this service and this function.
+        function_name = inspect.currentframe().f_code.co_name
+        self.S3_settings_dict['service_configured_obj_prefix'] = \
+            f"{self.AWS_S3_OBJECT_PREFIX.replace('unspecified-function',function_name)}"
+
+        response = execute_query(   query_against='_search'
+                                    ,request=request
+                                    ,index=target_index
+                                    ,es_url=es_url
+                                    ,query=None
+                                    ,large_response_settings_dict=self.S3_settings_dict)
+
+        return response
 
     # Verify "modify" permissions for a specified Dataset for the token presented.
     def _verify_dataset_permission(self, dataset_uuid, token, translator):
@@ -352,8 +372,20 @@ class SearchAPI:
         # get URL for that index
         es_url = self.INDICES['indices'][index_without_prefix]['elasticsearch']['url'].strip('/')
 
+        # Set a prefix used for naming any objects that end up in S3 which is
+        # specific to this service and this function.
+        function_name = inspect.currentframe().f_code.co_name
+        self.S3_settings_dict['service_configured_obj_prefix'] = \
+            f"{self.AWS_S3_OBJECT_PREFIX.replace('unspecified-function',function_name)}"
+
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_search', request, target_index, es_url)
+        response = execute_query(   query_against='_search'
+                                    ,request=request
+                                    ,index=target_index
+                                    ,es_url=es_url
+                                    ,query=None
+                                    ,large_response_settings_dict=self.S3_settings_dict)
+        return response
 
     # Info
     def mget(self):

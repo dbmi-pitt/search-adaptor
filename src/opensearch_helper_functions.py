@@ -1,9 +1,10 @@
 import os
 
-from flask import abort, jsonify, Flask
+from flask import abort, jsonify, Flask, json, Response
 import logging
 import requests
 from urllib.parse import urlparse
+from hubmap_commons.S3_worker import S3Worker
 
 logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d: %(message)s', level=logging.DEBUG,
                     datefmt='%Y-%m-%d %H:%M:%S')
@@ -81,7 +82,7 @@ def get_uuids_from_es(index, es_url):
 
 
 # Make a call to Elasticsearch
-def execute_query(query_against, request, index, es_url, query=None):
+def execute_query(query_against, request, index, es_url, query=None, large_response_settings_dict=None):
     supported_query_against = ['_search', '_count', '_mget']
     separator = ','
 
@@ -117,20 +118,48 @@ def execute_query(query_against, request, index, es_url, query=None):
 
     logger.debug(json_data)
 
-    response = requests.post(url=target_url, json=json_data)
+    opensearch_response = requests.post(url=target_url, json=json_data)
 
-    logger.debug(f"==========response status code: {response.status_code} ==========")
+    logger.debug(f"==========response status code: {opensearch_response.status_code} ==========")
 
     # Only check the response payload size on a successful call
-    # If any errors, no way the Elasticsearch response payload is over 10MB
-    if response.status_code == 200:
-        # Handling response over 10MB with a more useful message instead of AWS API Gateway's default 500 message
-        # Note Content-length header is not always provided, we have to calculate
-        check_response_payload_size(response.text)
+    # If any errors, no way the OpenSearch response payload is over 10MB
+    if opensearch_response.status_code == 200:
+        if large_response_settings_dict is not None:
+            # Since the calling service passed in a dictionary of settings for AWS S3, stash
+            # any large responses there.  Otherwise, allow the response to be returned directly
+            # as this function exits.
+            if len(opensearch_response.text.encode('utf-8')) >= large_response_settings_dict['large_response_threshold']:
+                anS3Worker = None
+                try:
+                    anS3Worker = S3Worker(  large_response_settings_dict['aws_access_key_id']
+                                            ,large_response_settings_dict['aws_secret_access_key']
+                                            ,large_response_settings_dict['aws_s3_bucket_name']
+                                            ,large_response_settings_dict['aws_object_url_expiration_in_secs'])
+                    logger.info("anS3Worker initialized")
+                    response_json = json.dumps(opensearch_response.json())
+                    obj_key = anS3Worker.stash_text_as_object(  response_json
+                                                                ,large_response_settings_dict['service_configured_obj_prefix'])
+                    aws_presigned_url = anS3Worker.create_URL_for_object(obj_key)
+                    return Response(    response=aws_presigned_url
+                                        , status=303) # See Other
+                except Exception as s3exception:
+                    logger.error(   f"Error getting anS3Worker to handle len(results)="
+                                    f"{len(opensearch_response.text.encode('utf-8'))}.")
+                    logger.error(s3exception, exc_info=True)
+                    return Response(    response=f"Unexpected error storing large results in S3. See logs."
+                                        ,status=500)
+        else:
+            # Since the calling service did not pass in a dictionary of settings for AWS S3, execute the
+            # traditional handling to check for responses over 10MB and return more useful message instead
+            # of AWS API Gateway's default 500 message.
+            # Note Content-length header is not always provided, we have to calculate
+            check_response_payload_size(opensearch_response.text)
 
     # Return the Elasticsearch resulting json data and status code
-    return jsonify(response.json()), response.status_code
-
+    return Response(    response=json.dumps(opensearch_response.json())
+                        , status=opensearch_response.status_code
+                        , mimetype='application/json')
 
 # Get the query string from orignal request
 def get_query_string(url):
