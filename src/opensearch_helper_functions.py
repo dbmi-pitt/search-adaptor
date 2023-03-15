@@ -64,10 +64,10 @@ def get_uuids_from_es(index, es_url):
         logger.debug("Searching ES for uuids...")
         logger.debug(es_url)
 
-        # execute_query() returns two values
-        resp, status_code = execute_query('_search', None, index, es_url, query)
+        resp = execute_query('_search', None, index, es_url, query)
 
-        logger.debug('Got a response from ES...')
+        logger.debug(f"OpenSearch '_search' query response returned resp.status_code={resp.status_code}.")
+        # @TODO-If a 303 response is returned, retrieve the JSON from an AWS bucket (not currently anticipated to happen.)
 
         ret_obj = resp.get_json()
         uuids.extend(hit['_id'] for hit in ret_obj.get('hits').get('hits'))
