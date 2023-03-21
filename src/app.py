@@ -1,9 +1,11 @@
 import concurrent.futures
 import inspect
+import re
 import threading
 from pathlib import Path
 import json
 
+import pandas as pd
 from flask import request, Response
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
@@ -103,6 +105,11 @@ class SearchAPI:
         @self.app.route('/reindex-all', methods=['PUT'])
         def __reindex_all():
             return self.reindex_all()
+
+        @self.app.route('/attribute-values', methods=['GET'])
+        @self.app.route('/<index>/attribute-values', methods=['GET'])
+        def __attribute_values(index=None):
+            return self.attribute_values(index=index)
 
         @self.app.route('/update/<uuid>', methods=['PUT'])
         @self.app.route('/update/<uuid>/<index>', methods=['PUT'])
@@ -561,6 +568,166 @@ class SearchAPI:
             internal_server_error(e)
 
         return 'Request of live reindex all documents accepted', 202
+
+    def _get_index_mappings(self, composite_index):
+        # get URL for the composite index specified.
+        configured_base_url = self.INDICES['indices'][composite_index]['elasticsearch']['url'].strip('/')
+
+        # Determine the target real index in OpenSearch to read
+        target_index = self.get_target_index(request=request, index_without_prefix=composite_index)
+
+        # Query the OpenSearch target_index, and return the JSON for the index mappings
+        target_url = f"{configured_base_url}/{target_index}/_mapping"
+        logger.debug(   f"Retrieving mappings for composite_index={composite_index} from"
+                        f" target_index={target_index} using"
+                        f" target_url={target_url}")
+
+        try:
+            response = requests.get(url=target_url)
+            if response.status_code != 200:
+                logger.error(   f"Retrieving mappings from composite_index={composite_index} caused"
+                                f" {response.status_code}, {response.text}.")
+                raise Exception(    f"Error encountered identifying acceptable attribute names for {composite_index}:"
+                                    f" {response.status_code}, {response.text}.")
+            return response.json()
+        except Exception as e:
+            logger.error(f"Exception while retrieving mappings from composite_index={composite_index}-{str(e)}.")
+            raise Exception(f"Exception while identifying acceptable attribute names for {composite_index}-{str(e)}.")
+
+    def _validate_parameters(self, request_args, expected_param_dict=None, fail_on_unexpected_param=False):
+        if not expected_param_dict or not expected_param_dict.keys():
+            bad_request_error(  f"A dictionary indicating 'required' and 'optional' parameters must"
+                                f" be supplied to validate parameters")
+        for expected_param in expected_param_dict.keys():
+            if expected_param not in request_args.keys() and expected_param_dict[expected_param] == 'required':
+                bad_request_error(f"Expected parameter {expected_param} was not found.")
+        if fail_on_unexpected_param:
+            for supplied_param in request_args.keys():
+                if supplied_param not in expected_param_dict.keys():
+                    bad_request_error(f"Parameter {supplied_param} was found, but not expected.")
+
+    def _all_keyword_attribute_names(self, composite_index):
+
+        # Get a JSON of the index's mapping
+        attribute_values_dict = self._get_index_mappings(composite_index=composite_index)
+
+        # Use pandas to "flatten" the dictionary built from OpenSearch JSON, then
+        # convert to a Python dictionary to culled.
+        attribute_values_dataframe = pd.json_normalize(attribute_values_dict, sep='.')
+        all_values_dict = attribute_values_dataframe.to_dict(orient='records')[0]
+
+        # Make a list of entries which are manipulated to a "dot form" acceptable for
+        # keyword searching.
+        acceptable_keyword_attrib_names = []
+        for k,v in all_values_dict.items():
+            if type(k) == str and v == 'keyword':
+                accepted_value = re.sub(    r'^[^\.]*\.mappings\.properties\.'
+                                            ,r''
+                                            ,k)
+                accepted_value = re.sub(    r'\.type$'
+                                            ,r''
+                                            ,accepted_value)
+                accepted_value = re.sub(    r'(\.properties\.|\.fields\.)'
+                                            ,r'.'
+                                            ,accepted_value)
+                acceptable_keyword_attrib_names.append(accepted_value)
+        acceptable_keyword_attrib_names.sort()
+        return acceptable_keyword_attrib_names
+
+    def _get_attribute_value_aggs(self, composite_index, verified_attrib_name):
+
+        MAX_CURRENT_VALUES_RETURNED = 500
+        aggs_query_dict =   {
+                                "size": 0,
+                                "aggs": {
+                                    "attribute_keys": {
+                                        "terms": {
+                                            "field": verified_attrib_name,
+                                            "size": MAX_CURRENT_VALUES_RETURNED
+                                        }
+                                    }
+                                }
+                            }
+
+        # get URL for the composite index specified.
+        configured_base_url = self.INDICES['indices'][composite_index]['elasticsearch']['url'].strip('/')
+
+        # Determine the target real index in OpenSearch to read
+        target_index = self.get_target_index(request=request, index_without_prefix=composite_index)
+
+        # Query the OpenSearch target_index, and return the JSON for the index mappings
+        target_url = f"{configured_base_url}/{target_index}/_search"
+        logger.debug(   f"Retrieving aggregations for composite_index={composite_index} for"
+                        f" {verified_attrib_name} from"
+                        f" target_index={target_index} using"
+                        f" target_url={target_url}")
+
+        try:
+            response = requests.get(url=target_url
+                                    , headers={'Content-Type': 'application/json'}
+                                    , json=aggs_query_dict)
+            if response.status_code != 200:
+                logger.error(   f"Retrieving aggregations from composite_index={composite_index},"
+                                f" attribute {verified_attrib_name} caused"
+                                f" {response.status_code}, {response.text}.")
+                raise Exception(    f"Error encountered identifying values for {composite_index},"
+                                    f" attribute {verified_attrib_name}:"
+                                    f" {response.status_code}, {response.text}.")
+
+            query_response_dict = response.json()
+            doc_count_not_in_aggs_sum = query_response_dict['aggregations']['attribute_keys']['sum_other_doc_count']
+            if doc_count_not_in_aggs_sum > 0:
+                logger.info(    f"Query of values for verified_attrib_name={verified_attrib_name} returned"
+                                f" sum_other_doc_count={doc_count_not_in_aggs_sum} despite being configured"
+                                f" for MAX_CURRENT_VALUES_RETURNED={MAX_CURRENT_VALUES_RETURNED}.")
+                raise Exception(    f"There are more than {MAX_CURRENT_VALUES_RETURNED} values for"
+                                    f" {verified_attrib_name}, which is more than configured to return.")
+            aggregate_attribs_dict =    {   'index': target_index,
+                                            'attribute_name': verified_attrib_name,
+                                            'attribute_existing_values': []
+                                        }
+            for bucket in query_response_dict['aggregations']['attribute_keys']['buckets']:
+                aggregate_attribs_dict['attribute_existing_values'].append(bucket['key'])
+            return aggregate_attribs_dict
+        except Exception as e:
+            logger.error(f"Retrieving aggregations from composite_index={composite_index},"
+                         f" attribute {verified_attrib_name} caused {str(e)}.")
+            raise Exception(f"Error encountered identifying values for {composite_index},"
+                            f" attribute {verified_attrib_name}: {str(e)}.")
+
+
+    def attribute_values(self, index):
+        if request.is_json:
+            bad_request_error(f"An unexpected JSON body was attached to the request to get attribute values.")
+
+        # Use the entities index if no index is specified.
+        index = 'entities' if not index else index
+
+        # Call get_target_index for validation, even though returned
+        # OpenSearch index name is not used at this level method.
+        try:
+            self.get_target_index(request=request, index_without_prefix=index)
+        except KeyError as ke:
+            return f"Unable to find index '{index}'.", 400
+
+        acceptable_param_values = self._all_keyword_attribute_names(composite_index=index)
+
+        if 'attribute_name_list' in request.args:
+            return json.dumps(acceptable_param_values), 200
+
+        self._validate_parameters(request_args=request.args
+                                  , expected_param_dict={'attribute_name': 'required'}
+                                  , fail_on_unexpected_param=True)
+        param_value = request.args['attribute_name']
+        if param_value in acceptable_param_values:
+            try:
+                attribute_value_counts = self._get_attribute_value_aggs(composite_index=index
+                                                                        ,verified_attrib_name=param_value)
+            except Exception as e:
+                return str(e), 400
+            return json.dumps(attribute_value_counts), 200
+        else:
+            return f"Unable to find '{param_value}' as a 'keyword' attribute for {index}", 400
 
     def update(self, uuid, index, scope):
         # Update a specific document with the passed in UUID
