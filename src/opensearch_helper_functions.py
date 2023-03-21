@@ -82,7 +82,7 @@ def get_uuids_from_es(index, es_url):
 
 
 # Make a call to Elasticsearch
-def execute_query(query_against, request, index, es_url, query=None, large_response_settings_dict=None):
+def execute_query(query_against, request, index, es_url, query=None, request_params=None, large_response_settings_dict=None):
     supported_query_against = ['_search', '_count', '_mget']
     separator = ','
 
@@ -101,6 +101,12 @@ def execute_query(query_against, request, index, es_url, query=None, large_respo
     logger.debug(type(es_url))
     # use the index es connection
     target_url = es_url + '/' + index + '/' + query_against
+    if request_params:
+        target_url = target_url + '?'
+        for param in request_params.keys():
+            target_url = target_url + param + '=' + request_params[param] + '&'
+        # dump the last ampersand
+        target_url = target_url[:-1]
 
     logger.debug("Target url: " + target_url)
     if query is None:

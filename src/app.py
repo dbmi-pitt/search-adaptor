@@ -1,5 +1,6 @@
 import concurrent.futures
 import inspect
+import logging
 import re
 import threading
 from pathlib import Path
@@ -7,6 +8,7 @@ import json
 
 import pandas as pd
 from flask import request, Response
+
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
 from urllib3.exceptions import InsecureRequestWarning
@@ -43,6 +45,8 @@ class SearchAPI:
 
         # Specify the absolute path of the instance folder and use the config file relative to the instance path
         self.app = Flask(__name__, instance_path=os.path.join(os.path.abspath(os.path.dirname(__file__))))
+
+        # If a Flask Blueprint is passed in from a service using this class, load that Blueprint.
         if blueprint is not None:
             self.app.register_blueprint(blueprint)
 
@@ -139,6 +143,21 @@ class SearchAPI:
                 # OpenSearch errors come back in the JSON, so return them that way.
                 return jsonify(he.response.json()), he.response.status_code
 
+        @self.app.route('/param-search/<entity_type>', methods=['GET'])
+        def __param_search_index(index=None, entity_type=None):
+            try:
+                resp = self.param_search_index(plural_entity_type=entity_type)
+                if resp.status_code >= 200 and resp.status_code < 300:
+                    return resp
+                elif resp.status_code in [303]:
+                    return resp
+                else:
+                    logger.error(f"OpenSearch query resulted in {resp.status_code} - '{resp.status}'.")
+                    return f"The search resulted in a {resp.status_code} error - {resp.status}.  See logs", resp.status_code
+            except requests.HTTPError as he:
+                # OpenSearch errors come back in the JSON, so return them that way.
+                return jsonify(he.response.json()), he.response.status_code
+
         ####################################################################################################
         ## AuthHelper initialization
         ####################################################################################################
@@ -215,6 +234,7 @@ class SearchAPI:
                                     ,index=target_index
                                     ,es_url=es_url
                                     ,query=None
+                                    ,request_params=None
                                     ,large_response_settings_dict=self.S3_settings_dict)
 
         return response
@@ -297,6 +317,110 @@ class SearchAPI:
             return "Scroll deleted", response.status_code
         else:
             return f"Scroll delete response  is {response.status_code}, {response.reason}.", response.status_code
+
+    # Use the path and parameters of the request to form a dictionary which can become an OpenSearch QDSL
+    # query when passed to jsonify().  This method supports searches in which the entity type is specified
+    # in the URL (e.g. /sample) and searches
+    #
+    # For initial implementation, only support exact match which "ands" each parameter in a "must" List.
+    # More complex queries should continue to be done submitting a JSON payload with
+    # a QDSL query to the search endpoint.
+    def _form_query_from_parameters(self, entity_type):
+
+        json_dict_exact_match_entity_attrib = {}
+        json_dict_exact_match_entity_attrib['query'] = {}
+        json_dict_exact_match_entity_attrib['query']['bool'] = {}
+        json_dict_exact_match_entity_attrib['query']['bool']['must'] = []
+        if entity_type:
+            json_dict_exact_match_entity_attrib['query']['bool']['must'].append(
+                {'match_phrase': {'entity_type': entity_type}}
+            )
+        for search_param_keyword in request.args.keys():
+            json_dict_exact_match_entity_attrib['query']['bool']['must'].append(
+                {'match_phrase': {f"{search_param_keyword}.keyword": request.args[search_param_keyword]}}
+            )
+        return json_dict_exact_match_entity_attrib
+
+    def param_search_index(self, plural_entity_type):
+        logger.log( logging.DEBUG-1
+                    ,f"In param_search_index() with plural_entity_type={plural_entity_type}")
+        composite_index_recognized_entities = self.PARAM_SEARCH_RECOGNIZED_ENTITIES_BY_INDEX
+
+        try:
+            if request.is_json:
+                bad_request_error(f"An unexpected JSON body was attached to the request to search using parameters.")
+
+            # For this "convenience" endpoint, associate the entity type being
+            # searched for with one of the "composite" indices from configuration.
+            composite_index = None
+            entity_type = None
+            recognized_entities_list = []
+            for index_name in composite_index_recognized_entities.keys():
+                if plural_entity_type in composite_index_recognized_entities[index_name].keys():
+                    composite_index = index_name
+                    entity_type = composite_index_recognized_entities[index_name][plural_entity_type]
+                recognized_entities_list = recognized_entities_list + \
+                                           list(composite_index_recognized_entities[index_name].keys())
+
+            # Return as accurate an error as possible if unable to resolve enough
+            # parameters for form a QDSL query for OpenSearch to execute.
+            if not composite_index:
+                msg = f"Unable to determine index supporting entity type '{plural_entity_type}'."
+                logger.debug(msg)
+                bad_request_error(f"{msg} Recognized entity types are {recognized_entities_list}.")
+
+            json_query_dict = self._form_query_from_parameters(entity_type=entity_type)
+
+            # Determine the target Opensearch index to be searched based upon the user's
+            # permissions and the composite_index determined from the request parameters.
+            target_index = self.get_target_index(request, composite_index)
+
+            # get URL for the Opensearch index to be queried
+            oss_base_url = self.INDICES['indices'][composite_index]['elasticsearch']['url'].strip('/')
+
+            logger.log(logging.DEBUG-1
+                       ,f"Parameterized query of OpenSearch using composite_index={composite_index}"
+                        f" target_index={target_index}, entity_type={entity_type}, oss_base_url={oss_base_url}")
+
+            # Set a prefix used for naming any objects that end up in S3 which is
+            # specific to this service and this function.
+            function_name = inspect.currentframe().f_code.co_name
+            self.S3_settings_dict['service_configured_obj_prefix'] = \
+                f"{self.AWS_S3_OBJECT_PREFIX.replace('unspecified-function', function_name)}"
+
+            # Return the elasticsearch resulting json data as json string
+            opensearch_response = execute_query(query_against='_search'
+                                                , request=None
+                                                , index=target_index
+                                                , es_url=oss_base_url
+                                                , query=json_query_dict
+                                                , request_params={'filter_path':'hits.hits._source'}
+                                                , large_response_settings_dict=self.S3_settings_dict)
+            if  opensearch_response.status_code == 200 and opensearch_response.json is not None:
+                # Return "just the hits" if there are any.  Otherwise, return whatever JSON is in
+                # the response from OpenSearch, since the status is 200.
+                resp_json = opensearch_response.json
+                if 'hits' in opensearch_response.json and 'hits' in opensearch_response.json['hits']:
+                    resp_json = opensearch_response.json['hits']['hits']
+                return Response(response=json.dumps(resp_json)
+                                    ,status=opensearch_response.status_code
+                                    ,mimetype='application/json')
+            elif opensearch_response.status_code == 303:
+                # For S3 redirects, just return the response from execute_query().
+                return opensearch_response
+            else:
+                logger.error(f"Unable to return ['hits']['hits'] content of opensearch_response with"
+                             f" status_code={opensearch_response.status_code}"
+                             f" and len(json)={len(opensearch_response.json)}.")
+        except Exception as e:
+            logger.exception(f"param_search_index() caused {str(e)}.")
+            raise e
+
+    def verify_parameters(self):
+        # For the first pass of "convenience searches", we are not going to verify things such as
+        # the appropriateness of the parameter for the entity type.  We will just form a QDSL query
+        # and return the results, rather than indicate the request is bad.
+        require_no_json(request)
 
     # Use the OpenSearch scroll API (https://opensearch.org/docs/latest/api-reference/scroll/)
     # to open a scroll which will be navigated in the specified time when scroll_id is not
@@ -391,6 +515,7 @@ class SearchAPI:
                                     ,index=target_index
                                     ,es_url=es_url
                                     ,query=None
+                                    ,request_params=None
                                     ,large_response_settings_dict=self.S3_settings_dict)
         return response
 
