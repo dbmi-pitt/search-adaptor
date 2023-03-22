@@ -7,7 +7,7 @@ from pathlib import Path
 import json
 
 import pandas as pd
-from flask import request, Response
+from flask import request
 
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
@@ -388,30 +388,49 @@ class SearchAPI:
             self.S3_settings_dict['service_configured_obj_prefix'] = \
                 f"{self.AWS_S3_OBJECT_PREFIX.replace('unspecified-function', function_name)}"
 
+            # The following usage of execute_opensearch_query() followed by size_response_for_gateway() replaces
+            # the functionality of execute_query(), so that the JSON can be manipulated between those calls.
+
             # Return the elasticsearch resulting json data as json string
-            opensearch_response = execute_query(query_against='_search'
+            opensearch_response = execute_opensearch_query(query_against='_search'
                                                 , request=None
                                                 , index=target_index
                                                 , es_url=oss_base_url
                                                 , query=json_query_dict
-                                                , request_params={'filter_path':'hits.hits._source'}
-                                                , large_response_settings_dict=self.S3_settings_dict)
-            if  opensearch_response.status_code == 200 and opensearch_response.json is not None:
-                # Return "just the hits" if there are any.  Otherwise, return whatever JSON is in
-                # the response from OpenSearch, since the status is 200.
-                resp_json = opensearch_response.json
-                if 'hits' in opensearch_response.json and 'hits' in opensearch_response.json['hits']:
-                    resp_json = opensearch_response.json['hits']['hits']
-                return Response(response=json.dumps(resp_json)
-                                    ,status=opensearch_response.status_code
-                                    ,mimetype='application/json')
-            elif opensearch_response.status_code == 303:
-                # For S3 redirects, just return the response from execute_query().
-                return opensearch_response
+                                                , request_params={'filter_path':'hits.hits._source'})
+
+            if  opensearch_response.status_code == 200:
+                # Strip away whatever remains of OpenSearch artifacts, such as _source, for the purpose
+                # of making usage more convenient when searching with parameters rather than QDSL queries.
+                # N.B. Many such artifacts should have already been stripped through usage of the filter_path.
+                resp_json = opensearch_response.json()
+                if not resp_json:
+                    # If OpenSearch responded with an empty dictionary or otherwise Falsy JSON,
+                    # prepare an empty dictionary to be returned, consistent with parameterized
+                    # searching responses
+                    resp_json = []
+                if 'hits' in resp_json and 'hits' in resp_json['hits']:
+                    convenience_json = []
+                    for hit in resp_json['hits']['hits']:
+                        convenience_json.append(hit['_source'])
+                    resp_json = convenience_json
+
+                # Check the size of what is to be returned through the AWS Gateway, and replace it with
+                # a response that links to AWS S3, if appropriate.
+                s3_response = size_response_for_gateway(response_json=json.dumps(resp_json)
+                                                        , large_response_settings_dict=self.S3_settings_dict)
+                if s3_response is not None:
+                    return s3_response
+                else:
+                    return Response(response=json.dumps(resp_json)
+                                    , status=opensearch_response.status_code
+                                    , mimetype='application/json')
             else:
                 logger.error(f"Unable to return ['hits']['hits'] content of opensearch_response with"
                              f" status_code={opensearch_response.status_code}"
                              f" and len(json)={len(opensearch_response.json)}.")
+                raise Exception(f"OpenSearch query return a status code of '{opensearch_response.status_code}'."
+                                f" See logs.")
         except Exception as e:
             logger.exception(f"param_search_index() caused {str(e)}.")
             raise e

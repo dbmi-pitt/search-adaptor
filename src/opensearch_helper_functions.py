@@ -80,9 +80,7 @@ def get_uuids_from_es(index, es_url):
 
     return uuids
 
-
-# Make a call to Elasticsearch
-def execute_query(query_against, request, index, es_url, query=None, request_params=None, large_response_settings_dict=None):
+def execute_opensearch_query(query_against, request, index, es_url, query=None, request_params=None):
     supported_query_against = ['_search', '_count', '_mget']
     separator = ','
 
@@ -124,46 +122,61 @@ def execute_query(query_against, request, index, es_url, query=None, request_par
 
     logger.debug(json_data)
 
-    opensearch_response = requests.post(url=target_url, json=json_data)
+    return requests.post(url=target_url, json=json_data)
 
-    logger.debug(f"==========response status code: {opensearch_response.status_code} ==========")
+def size_response_for_gateway(response_json=None, large_response_settings_dict=None):
 
-    # Only check the response payload size on a successful call
-    # If any errors, no way the OpenSearch response payload is over 10MB
-    if opensearch_response.status_code == 200:
-        if large_response_settings_dict is not None:
-            # Since the calling service passed in a dictionary of settings for AWS S3, stash
-            # any large responses there.  Otherwise, allow the response to be returned directly
-            # as this function exits.
-            if len(opensearch_response.text.encode('utf-8')) >= large_response_settings_dict['large_response_threshold']:
-                anS3Worker = None
-                try:
-                    anS3Worker = S3Worker(  large_response_settings_dict['aws_access_key_id']
-                                            ,large_response_settings_dict['aws_secret_access_key']
-                                            ,large_response_settings_dict['aws_s3_bucket_name']
-                                            ,large_response_settings_dict['aws_object_url_expiration_in_secs'])
-                    logger.info("anS3Worker initialized")
-                    response_json = json.dumps(opensearch_response.json())
-                    obj_key = anS3Worker.stash_text_as_object(  response_json
-                                                                ,large_response_settings_dict['service_configured_obj_prefix'])
-                    aws_presigned_url = anS3Worker.create_URL_for_object(obj_key)
-                    return Response(    response=aws_presigned_url
-                                        , status=303) # See Other
-                except Exception as s3exception:
-                    logger.error(   f"Error getting anS3Worker to handle len(results)="
-                                    f"{len(opensearch_response.text.encode('utf-8'))}.")
-                    logger.error(s3exception, exc_info=True)
-                    return Response(    response=f"Unexpected error storing large results in S3. See logs."
-                                        ,status=500)
-        else:
-            # Since the calling service did not pass in a dictionary of settings for AWS S3, execute the
-            # traditional handling to check for responses over 10MB and return more useful message instead
-            # of AWS API Gateway's default 500 message.
-            # Note Content-length header is not always provided, we have to calculate
-            check_response_payload_size(opensearch_response.text)
+    if large_response_settings_dict is not None:
+        # Since the calling service passed in a dictionary of settings for AWS S3, stash
+        # any large responses there.  Otherwise, allow the response to be returned directly
+        # as this function exits.
+        if len(response_json.encode('utf-8')) >= large_response_settings_dict['large_response_threshold']:
+            anS3Worker = None
+            try:
+                anS3Worker = S3Worker(  large_response_settings_dict['aws_access_key_id']
+                                        ,large_response_settings_dict['aws_secret_access_key']
+                                        ,large_response_settings_dict['aws_s3_bucket_name']
+                                        ,large_response_settings_dict['aws_object_url_expiration_in_secs'])
+                logger.info("anS3Worker initialized")
+                obj_key = anS3Worker.stash_text_as_object(  response_json
+                                                            ,large_response_settings_dict['service_configured_obj_prefix'])
+                aws_presigned_url = anS3Worker.create_URL_for_object(obj_key)
+                return Response(    response=aws_presigned_url
+                                    , status=303) # See Other
+            except Exception as s3exception:
+                logger.error(   f"Error getting anS3Worker to handle len(results)="
+                                f"{len(response_json.encode('utf-8'))}.")
+                logger.error(s3exception, exc_info=True)
+                return Response(    response=f"Unexpected error storing large results in S3. See logs."
+                                    ,status=500)
+    else:
+        # Since the calling service did not pass in a dictionary of settings for AWS S3, execute the
+        # traditional handling to check for responses over 10MB and return more useful message instead
+        # of AWS API Gateway's default 500 message.
+        # Note Content-length header is not always provided, we have to calculate
+        check_response_payload_size(response_json)
+    return None
 
-    # Return the Elasticsearch resulting json data and status code
-    return Response(    response=json.dumps(opensearch_response.json())
+def execute_query(query_against, request, index, es_url, query=None, request_params=None, large_response_settings_dict=None):
+    opensearch_response = execute_opensearch_query(query_against=query_against
+                                                   ,request=request
+                                                   ,index=index
+                                                   ,es_url=es_url
+                                                   ,query=query
+                                                   ,request_params=request_params)
+
+    # Continue on using the exact JSON returned by the OpenSearch query. Use cases which need to
+    # manipulate the JSON for their response should do their own execute_opensearch_query() and
+    # size_response_for_gateway(), with the manipulation between the calls.
+
+    s3_response = size_response_for_gateway(response_json=json.dumps(opensearch_response.json())
+                                            , large_response_settings_dict=large_response_settings_dict)
+    if s3_response is not None:
+        return s3_response
+    else:
+        # Convert the requests.models.Response to a flask.wrappers.Response to
+        # return results through the view.
+        return Response(response=json.dumps(opensearch_response.json())
                         , status=opensearch_response.status_code
                         , mimetype='application/json')
 
