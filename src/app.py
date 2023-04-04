@@ -29,10 +29,12 @@ logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 class SearchAPI:
-    def __init__(self, config, translator_module, blueprint=None):
+    def __init__(self, config, translator_module, blueprint=None, ubkg_instance=None):
         # Set self based on passed in config parameters
         for key, value in config.items():
             setattr(self, key, value)
+
+        self.ubkg_instance = ubkg_instance
 
         self.translator_module = translator_module
 
@@ -1272,7 +1274,7 @@ class SearchAPI:
         return headers_dict
 
     def init_translator(self, token):
-        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token)
+        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, ubkg_instance=self.ubkg_instance)
 
     # Get a list of filtered Elasticsearch indices to expose to end users without the prefix
     def get_filtered_indices(self):
