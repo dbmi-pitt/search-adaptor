@@ -68,21 +68,26 @@ def get_type_description(type_code, type_yaml_file_name):
         definition_dict = yaml.safe_load(file)
 
         logger.info(f"Definition yaml file {type_yaml_file} loaded successfully")
+        return get_type_description_from_dict(definition_dict, type_code, type_yaml_file)
 
-        if type_code in definition_dict:
-            definition_desc = definition_dict[type_code]['description']
-        else:
-            # Return the error message as description
-            msg = f"Missing definition key {type_code} in {type_yaml_file}"
 
-            logger.error(msg)
+def get_type_description_from_dict(definition_dict, type_code, source_data_name='ontology'):
+    if type_code in definition_dict:
+        definition_desc = definition_dict[type_code]
+        if type(definition_desc) is not str:
+            definition_desc = definition_desc['description']
+    else:
+        # Return the error message as description
+        msg = f"Missing definition key {type_code} in {source_data_name}"
 
-            # Use triple {{{}}}
-            definition_desc = f"{{{type_code}}}"
+        logger.error(msg)
 
-        logger.debug(f"========definition_desc: {definition_desc}")
+        # Use triple {{{}}}
+        definition_desc = f"{{{type_code}}}"
 
-        return definition_desc
+    logger.debug(f"========definition_desc: {definition_desc}")
+
+    return definition_desc
 
 
 def remove_specific_key_entry(obj, key_to_remove=None):
