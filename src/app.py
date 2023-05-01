@@ -1274,7 +1274,9 @@ class SearchAPI:
         return headers_dict
 
     def init_translator(self, token):
-        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, ubkg_instance=self.ubkg_instance)
+        if self.ubkg_instance is None:
+            return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token)
+        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ubkg_instance)
 
     # Get a list of filtered Elasticsearch indices to expose to end users without the prefix
     def get_filtered_indices(self):
