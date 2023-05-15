@@ -22,3 +22,10 @@ Pipfile.lock
 .idea
 
 *.DS_Store
+
+# Python environment
+env/
+venv/
+
+# Testing
+./.pytest_cache/

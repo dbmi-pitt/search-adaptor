@@ -11,3 +11,6 @@ PyYAML>=5.3.1
 # Default is main branch
 #git+https://github.com/hubmapconsortium/commons.git@main#egg=hubmap-commons
 hubmap-commons==2.1.5
+
+# Test dependencies
+pytest==7.3.1
