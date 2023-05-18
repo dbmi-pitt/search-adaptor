@@ -7,6 +7,9 @@ import pytest
 
 from src.libs.es_writer import ESWriter
 
+### Set Additional Parameters
+# To run this in PyCharm set the 'Additional Parameters' to be "--es_url <elasticsearch_url>"
+
 ### Test params
 
 test_index_name = 'test_index'
