@@ -1119,7 +1119,12 @@ class SearchAPI:
             # But we also need to ensure the user belongs to Data Admin group
             # in order to execute the live reindex-all
             # Return a 403 response if the user doesn't belong to Data Admin group
-            if not self.auth_helper_instance.has_data_admin_privs(user_token):
+            has_data_admin_privs = self.auth_helper_instance.has_data_admin_privs(user_token)
+            # The user_token is flask.Response on error
+            if isinstance(has_data_admin_privs, Response):
+                # The Response.data returns binary string, need to decode
+                unauthorized_error(has_data_admin_privs.data.decode())
+            if not has_data_admin_privs:
                 forbidden_error("Access not granted")
         return user_token
 
