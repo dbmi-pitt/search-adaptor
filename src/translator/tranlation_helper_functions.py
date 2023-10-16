@@ -15,13 +15,8 @@ logger = logging.getLogger(__name__)
 def get_uuids_by_entity_type(entity_type, request_headers, entity_api_url):
     entity_type = entity_type.lower()
 
-    # Use different entity-api endpoint for Collection
-    if entity_type == 'collection':
-        # url = app.config['ENTITY_API_URL'] + "/collections?property=uuid"
-        url = entity_api_url + "/collections?property=uuid"
-    else:
-        # url = app.config['ENTITY_API_URL'] + "/" + entity_type + "/entities?property=uuid"
-        url = entity_api_url + "/" + entity_type + "/entities?property=uuid"
+    # url = app.config['ENTITY_API_URL'] + "/" + entity_type + "/entities?property=uuid"
+    url = entity_api_url + "/" + entity_type + "/entities?property=uuid"
 
     response = requests.get(url, headers=request_headers, verify=False)
 
