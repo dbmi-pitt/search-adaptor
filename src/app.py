@@ -1243,29 +1243,6 @@ class SearchAPI:
         else:
             return target_index
 
-    # Get a list of entity uuids via entity-api for a given entity type:
-    # Collection, Donor, Sample, Dataset, Submission. Case-insensitive.
-    def get_uuids_by_entity_type(self, entity_type, token):
-        entity_type = entity_type.lower()
-
-        request_headers = self.create_request_headers_for_auth(token)
-
-        # Use different entity-api endpoint for Collection
-        if entity_type == 'collection':
-            url = self.DEFAULT_ENTITY_API_URL + "/collections?property=uuid"
-        else:
-            url = self.DEFAULT_ENTITY_API_URL + "/" + entity_type + "/entities?property=uuid"
-
-        response = requests.get(url, headers=request_headers, verify=False)
-
-        if response.status_code != 200:
-            internal_server_error(
-                "get_uuids_by_entity_type() failed to make a request to entity-api for entity type: " + entity_type)
-
-        uuids_list = response.json()
-
-        return uuids_list
-
     # Create a dict with HTTP Authorization header with Bearer token
     def create_request_headers_for_auth(self, token):
         auth_header_name = 'Authorization'
