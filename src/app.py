@@ -1257,7 +1257,7 @@ class SearchAPI:
 
     def init_translator(self, token):
         if self.ubkg_instance is None:
-            return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token)
+            return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ONTOLOGY_API_APP_SETTING)
         return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ubkg_instance)
 
     # Get a list of filtered Elasticsearch indices to expose to end users without the prefix

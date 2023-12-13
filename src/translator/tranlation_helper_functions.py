@@ -51,35 +51,6 @@ def get_all_reindex_enabled_indice_names(all_indices):
 
     return all_names
 
-
-def get_type_description(type_code, type_yaml_file_name):
-    filename = 'search-schema/data/definitions/enums/' + type_yaml_file_name + '.yaml'
-    type_yaml_file = Path(
-        __file__).absolute().parent.parent.parent.parent / filename
-
-    logger.debug(f"========type_code: {type_code}")
-
-    with open(type_yaml_file) as file:
-        definition_dict = yaml.safe_load(file)
-
-        logger.info(f"Definition yaml file {type_yaml_file} loaded successfully")
-
-        if type_code in definition_dict:
-            definition_desc = definition_dict[type_code]['description']
-        else:
-            # Return the error message as description
-            msg = f"Missing definition key {type_code} in {type_yaml_file}"
-
-            logger.error(msg)
-
-            # Use triple {{{}}}
-            definition_desc = f"{{{type_code}}}"
-
-        logger.debug(f"========definition_desc: {definition_desc}")
-
-        return definition_desc
-
-
 def remove_specific_key_entry(obj, key_to_remove=None):
     if type(obj) == dict:
         if key_to_remove in obj.keys():
