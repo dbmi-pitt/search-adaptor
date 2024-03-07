@@ -108,6 +108,10 @@ class SearchAPI:
         def __reindex(uuid):
             return self.reindex(uuid)
 
+        @self.app.route('/reindex-bulk', methods=['PUT'])
+        def __reindex_bulk():
+            return self.reindex_bulk()
+
         @self.app.route('/reindex-all', methods=['PUT'])
         def __reindex_all():
             return self.reindex_all()
@@ -692,6 +696,26 @@ class SearchAPI:
                 internal_server_error(e)
 
             return f"Request of reindexing {uuid} accepted", 202
+
+    # Reindex a list of IDs
+    def reindex_bulk(self):
+        token = self.get_user_token(request.headers)
+        uuids_to_reindex = request.json
+
+        try:
+            threads = []
+            translator = self.init_translator(token)
+            for uuid in uuids_to_reindex:
+                thread = threading.Thread(target=translator.translate, args=[uuid])
+                threads.append(thread)
+                thread.start()
+
+                logger.info(f"Started to update document with uuid: {uuid}")
+        except Exception as e:
+            logger.exception(e)
+            internal_server_error(e)
+
+        return f"Request of bulk reindexing accepted", 202
 
     # Live reindex without first deleting and recreating the indices
     # This just deletes the old document and add the latest document of each entity (if still available)
