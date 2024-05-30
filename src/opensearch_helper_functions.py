@@ -82,11 +82,30 @@ def get_uuids_from_es(index, es_url):
 
 def execute_opensearch_query(query_against, request, index, es_url, query=None, request_params=None):
     supported_query_against = ['_search', '_count', '_mget']
+    supported_endpoints_with_id = ['_update']
+    supported_endpoints = supported_query_against + supported_endpoints_with_id
     separator = ','
 
-    if query_against not in supported_query_against:
-        bad_request_error(
-            f"Query against '{query_against}' is not supported by Search API. Use one of the following: {separator.join(supported_query_against)}")
+    # If query_against has a / in it, assume a 32 character identifier after the / is okay, but
+    # verify the endpoint name before the / is in supported_query_against
+    logger.debug(f"KBKBKB query_against={query_against}")
+    logger.debug(f"KBKBKB index={index}")
+    if '/' in query_against:
+        endpoint_elements = query_against.split(sep='/'
+                                                ,maxsplit=1)
+        logger.debug(f"KBKBKB endpoint_elements={endpoint_elements}")
+        # For an internal function like this, assume the 32 character part after the / is
+        # a UUID without verifying the format, and allow it through.
+        if  endpoint_elements[0] not in supported_endpoints_with_id \
+            or len(endpoint_elements[1]) != 32:
+            bad_request_error(f"Query of endpoint '{endpoint_elements[0]}'"
+                              f" with identifier '{endpoint_elements[1]}'"
+                              " is not supported by Search API."
+                              f" Supported endoints are: {separator.join(supported_endpoints)}")
+    elif query_against not in supported_query_against:
+        bad_request_error(  f"Query against '{query_against}' is not supported by Search API."
+                            f" Use one of the following: {separator.join(supported_endpoints)}")
+    logger.debug(f"KBKBKB query_against={query_against} is cool.  Delete this debug statement after verifying other supported_query_against={supported_endpoints}")
 
     # Determine the target real index in Elasticsearch to be searched against
     # index = get_target_index(request, index_without_prefix)
