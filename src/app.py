@@ -81,9 +81,9 @@ class SearchAPI:
         def __mapping():
             return self.mapping()
 
-        @self.app.route('/mapping/<index_name>', methods=['GET'])
-        def __mapping_index(index_name):
-            return self.mapping_index(index_name)
+        @self.app.route('/mapping/<index_without_prefix>', methods=['GET'])
+        def __mapping_index(index_without_prefix):
+            return self.mapping_index(index_without_prefix)
 
         @self.app.route('/<index_without_prefix>/search', methods=['POST'])
         def __search_by_index(index_without_prefix):
@@ -253,15 +253,15 @@ class SearchAPI:
     # Defaults to using the consortium index. Exposes Elasticsearch's `_mapping` endpoint to return details
     # regarding a specific index.
     def mapping(self):
-        return self._get_index_mappings('entities')
+        return self._get_index_mappings(self.INDICES['default_index'])
 
     # Exposes Elasticsearch's `_mapping` endpoint to return details regarding a specific index.
-    def mapping_index(self, index_name):
+    def mapping_index(self, index_without_prefix):
         # Check that the provided index exists in the configuration
-        if index_name not in self.INDICES['indices'].keys():
-            return f"Unable to find index '{index_name}'.", 400
+        if index_without_prefix not in self.INDICES['indices'].keys():
+            return f"Unable to find index '{index_without_prefix}'.", 404
 
-        return self._get_index_mappings(index_name)
+        return self._get_index_mappings(index_without_prefix)
 
     # Verify "modify" permissions for a specified Dataset for the token presented.
     def _verify_dataset_permission(self, dataset_uuid, token, translator):
