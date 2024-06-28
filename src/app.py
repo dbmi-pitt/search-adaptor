@@ -711,7 +711,7 @@ class SearchAPI:
                 logger.info('Started live reindex all')
             else:
                 logger.info('Could not start live reindex all. Thread already running.')
-                return 'Request of live reindex all documents not accepted', 409
+                return 'Request of live reindex all documents not accepted. Reindex all process already running', 409
 
         except Exception as e:
             logger.exception(e)
