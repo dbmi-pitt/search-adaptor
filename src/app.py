@@ -81,7 +81,7 @@ class SearchAPI:
         def __mapping():
             return self.mapping()
 
-        @self.app.route('/mapping/<index_without_prefix>', methods=['GET'])
+        @self.app.route('/<index_without_prefix>/mapping', methods=['GET'])
         def __mapping_index(index_without_prefix):
             return self.mapping_index(index_without_prefix)
 
