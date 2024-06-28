@@ -705,15 +705,29 @@ class SearchAPI:
 
         try:
             translator = self.init_translator(token)
-            threading.Thread(target=translator.translate_all, args=[]).start()
+            job_name = 'reindex_all'
+            if self._is_job_thread_running(job_name) is False:
+                threading.Thread(target=translator.translate_all, args=[], name=job_name).start()
+                logger.info('Started live reindex all')
+            else:
+                logger.info('Could not start live reindex all. Thread already running.')
+                return 'Request of live reindex all documents not accepted', 409
 
-            logger.info('Started live reindex all')
         except Exception as e:
             logger.exception(e)
 
             internal_server_error(e)
 
         return 'Request of live reindex all documents accepted', 202
+
+    def _is_job_thread_running(self, job_name):
+        is_running = False
+        for th in threading.enumerate():
+            if th.name == job_name:
+                is_running = True
+                break
+
+        return is_running
 
     def _get_index_mappings(self, composite_index):
         # get URL for the composite index specified.
