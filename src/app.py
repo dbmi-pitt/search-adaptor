@@ -212,6 +212,48 @@ class SearchAPI:
 
     def index(self):
         return "Hello! This is the Search API service :)"
+    
+    ####################################################################################################
+    ## Helper Functions
+    ####################################################################################################
+
+    def build_manifest(self, request, response):
+        status_code = response.status_code
+        content_data = response.get_data(as_text=True)
+        if status_code == 303:
+            s3_response = requests.get(content_data)
+            flask_response = Response(
+                s3_response.content,
+                status=s3_response.status_code,
+                headers=dict(s3_response.headers),
+                content_type="application/json"
+            )
+            output = flask_response
+        else:
+            output = response
+        output_json = json.loads(output.get_data(as_text=True))
+        if "status" in output_json:
+            return output
+        if "aggs" in request.json:
+            return make_response(jsonify("If parameter produce-clt-manifest is included, may not use 'aggs' in request body."), 422)
+        hits = output_json.get('hits')
+        if not hits:
+            # This resposne is different from simply returning no results. This means the entire outer "hits" field is missing.
+            return make_response(jsonify("Response contains no hits"), 404)
+        hit_list = hits.get('hits')
+        if not hit_list:
+            return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
+        manifest_list = []
+        for hit in hit_list:
+            source = hit.get("_source")
+            entity_type = source.get("entity_type")
+            hubmap_id = source.get("hubmap_id")
+            if entity_type.lower() == "dataset":
+                manifest_list.append(f"{hubmap_id} /")
+        if not manifest_list:
+            return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
+        manifest_text = '\n'.join(manifest_list)
+        return Response(manifest_text, mimetype='text/plain')
 
     ####################################################################################################
     ## API
@@ -249,7 +291,6 @@ class SearchAPI:
                                     ,request_params=None
                                     ,large_response_settings_dict=self.S3_settings_dict)
         generate_manifest = False
-        accepted_s3_domains = ["hm-api-responses.s3.amazonaws.com"]
 
         if bool(request.args):
             produce_manifest = request.args.get('produce-clt-manifest')
@@ -257,47 +298,8 @@ class SearchAPI:
             if produce_manifest.lower() == "true":
                 generate_manifest = True
 
-
-        manifest_list = []
         if generate_manifest is True:
-            content_type = response.content_type
-            content_data = response.get_data(as_text=True)
-            if content_type.startswith("text/html"):
-                if urlparse(content_data).netloc not in accepted_s3_domains:
-                    return make_response(jsonify("The query returned an HTML response instead of the expected JSON. Only HTML responses containing an S3 redirect URL are permitted."), 500)
-                else:
-                    s3_response = requests.get(content_data)
-                    flask_response = Response(
-                        s3_response.content,
-                        status=s3_response.status_code,
-                        headers=dict(s3_response.headers),
-                        content_type="application/json"
-                    )
-                    output = flask_response
-            else:
-                output = response
-            output_json = json.loads(output.get_data(as_text=True))
-            if "status" in output_json:
-                return output
-            if "aggs" in request.json:
-                return make_response(jsonify("if parameter produce-clt-manifest is included, may not use 'aggs' in request body."), 422)
-            hits = output_json.get('hits')
-            if not hits:
-                # This resposne is different from simply returning no results. This means the entire outer "hits" field is missing.
-                return make_response(jsonify("Response contains no hits"), 404)
-            hit_list = hits.get('hits')
-            if not hit_list:
-                return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
-            for hit in hit_list:
-                source = hit.get("_source")
-                entity_type = source.get("entity_type")
-                hubmap_id = source.get("hubmap_id")
-                if entity_type.lower() == "dataset":
-                    manifest_list.append(f"{hubmap_id} /")
-            if not manifest_list:
-                return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
-            manifest_text = '\n'.join(manifest_list)
-            return Response(manifest_text, mimetype='text/plain')
+            return self.build_manifest(request, response)
 
         return response
 
@@ -486,14 +488,11 @@ class SearchAPI:
 
             manifest_list = []
             if generate_manifest is True:
-                content_type = opensearch_response.headers.get('Content-Type')
+                status_code = opensearch_response.status_code
                 content_data = opensearch_response.text
-                if content_type.startswith("text/html"):
-                    if urlparse(content_data).netloc not in accepted_s3_domains:
-                        return make_response(jsonify("The query returned an HTML response instead of the expected JSON. Only HTML responses containing an S3 redirect URL are permitted."), 500)
-                    else:
-                        s3_response = requests.get(content_data)
-                        output = s3_response
+                if status_code == 303:
+                    s3_response = requests.get(content_data)
+                    output = s3_response
                 else:
                     output = opensearch_response
                 output_json = output.json()
@@ -655,7 +654,6 @@ class SearchAPI:
                                     ,request_params=None
                                     ,large_response_settings_dict=self.S3_settings_dict)
         generate_manifest = False
-        accepted_s3_domains = ["hm-api-responses.s3.amazonaws.com"]
 
         if bool(request.args):
             produce_manifest = request.args.get('produce-clt-manifest')
@@ -663,47 +661,9 @@ class SearchAPI:
             if produce_manifest.lower() == "true":
                 generate_manifest = True
 
-
-        manifest_list = []
         if generate_manifest is True:
-            content_type = response.content_type
-            content_data = response.get_data(as_text=True)
-            if content_type.startswith("text/html"):
-                if urlparse(content_data).netloc not in accepted_s3_domains:
-                    return make_response(jsonify("The query returned an HTML response instead of the expected JSON. Only HTML responses containing an S3 redirect URL are permitted."), 500)
-                else:
-                    s3_response = requests.get(content_data)
-                    flask_response = Response(
-                        s3_response.content,
-                        status=s3_response.status_code,
-                        headers=dict(s3_response.headers),
-                        content_type="application/json"
-                    )
-                    output = flask_response
-            else:
-                output = response
-            output_json = json.loads(output.get_data(as_text=True))
-            if "status" in output_json:
-                return output
-            if "aggs" in request.json:
-                return make_response(jsonify("if parameter produce-clt-manifest is included, may not use 'aggs' in request body."), 422)
-            hits = output_json.get('hits')
-            if not hits:
-                # This resposne is different from simply returning no results. This means the entire outer "hits" field is missing.
-                return make_response(jsonify("Response contains no hits"), 404)
-            hit_list = hits.get('hits')
-            if not hit_list:
-                return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
-            for hit in hit_list:
-                source = hit.get("_source")
-                entity_type = source.get("entity_type")
-                hubmap_id = source.get("hubmap_id")
-                if entity_type.lower() == "dataset":
-                    manifest_list.append(f"{hubmap_id} /")
-            if not manifest_list:
-                return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
-            manifest_text = '\n'.join(manifest_list)
-            return Response(manifest_text, mimetype='text/plain')
+            return self.build_manifest(request, response)
+
         return response
 
     # Info
