@@ -248,6 +248,8 @@ class SearchAPI:
             source = hit.get("_source")
             entity_type = source.get("entity_type")
             hubmap_id = source.get("hubmap_id")
+            if entity_type is None:
+                        return make_response(jsonify("Required field 'entity_type' was not returned by the query. Make sure it has not been excluded"), 400)
             if entity_type.lower() == "dataset":
                 manifest_list.append(f"{hubmap_id} /")
         if not manifest_list:
@@ -484,8 +486,6 @@ class SearchAPI:
                                                 , query=json_query_dict
                                                 , request_params={'filter_path':'hits.hits._source'})
             
-            accepted_s3_domains = ["hm-api-responses.s3.amazonaws.com"]
-
             manifest_list = []
             if generate_manifest is True:
                 status_code = opensearch_response.status_code
@@ -510,6 +510,8 @@ class SearchAPI:
                     source = hit.get("_source")
                     entity_type = source.get("entity_type")
                     hubmap_id = source.get("hubmap_id")
+                    if entity_type is None:
+                        return make_response(jsonify("Required field 'entity_type' was not returned by the query. Make sure it has not been excluded"), 400)
                     if entity_type.lower() == "dataset":
                         manifest_list.append(f"{hubmap_id} /")
                 if not manifest_list:
