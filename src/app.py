@@ -5,10 +5,11 @@ import re
 import threading
 from pathlib import Path
 import json
+from urllib.parse import urlparse
 
 import pandas as pd
 import requests
-from flask import request
+from flask import request, make_response
 
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
@@ -211,6 +212,50 @@ class SearchAPI:
 
     def index(self):
         return "Hello! This is the Search API service :)"
+    
+    ####################################################################################################
+    ## Helper Functions
+    ####################################################################################################
+
+    def build_manifest(self, request, response):
+        status_code = response.status_code
+        content_data = response.get_data(as_text=True)
+        if status_code == 303:
+            s3_response = requests.get(content_data)
+            flask_response = Response(
+                s3_response.content,
+                status=s3_response.status_code,
+                headers=dict(s3_response.headers),
+                content_type="application/json"
+            )
+            output = flask_response
+        else:
+            output = response
+        output_json = json.loads(output.get_data(as_text=True))
+        if "status" in output_json:
+            return output
+        if "aggs" in request.json:
+            return make_response(jsonify("If parameter produce-clt-manifest is included, may not use 'aggs' in request body."), 422)
+        hits = output_json.get('hits')
+        if not hits:
+            # This resposne is different from simply returning no results. This means the entire outer "hits" field is missing.
+            return make_response(jsonify("Response contains no hits"), 404)
+        hit_list = hits.get('hits')
+        if not hit_list:
+            return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
+        manifest_list = []
+        for hit in hit_list:
+            source = hit.get("_source")
+            entity_type = source.get("entity_type")
+            hubmap_id = source.get("hubmap_id")
+            if entity_type is None:
+                    return make_response(jsonify("Required field 'entity_type' was not returned by the query. Make sure it has not been excluded"), 400)
+            if entity_type.lower() == "dataset":
+                manifest_list.append(f"{hubmap_id} /")
+        if not manifest_list:
+            return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
+        manifest_text = '\n'.join(manifest_list)
+        return Response(manifest_text, mimetype='text/plain')
 
     ####################################################################################################
     ## API
@@ -247,6 +292,16 @@ class SearchAPI:
                                     ,query=None
                                     ,request_params=None
                                     ,large_response_settings_dict=self.S3_settings_dict)
+        generate_manifest = False
+
+        if bool(request.args):
+            produce_manifest = request.args.get('produce-clt-manifest')
+
+            if produce_manifest.lower() == "true":
+                generate_manifest = True
+
+        if generate_manifest is True:
+            return self.build_manifest(request, response)
 
         return response
 
@@ -411,6 +466,14 @@ class SearchAPI:
             function_name = inspect.currentframe().f_code.co_name
             self.S3_settings_dict['service_configured_obj_prefix'] = \
                 f"{self.AWS_S3_OBJECT_PREFIX.replace('unspecified-function', function_name)}"
+            
+            generate_manifest = False
+            if bool(request.args):
+                produce_manifest = request.args.get('produce-clt-manifest')
+                json_query_dict['query']['bool']['must'] = [item for item in json_query_dict['query']['bool']['must'] if not ('match_phrase' in item and 'produce-clt-manifest.keyword' in item['match_phrase'])]
+
+                if produce_manifest.lower() == "true":
+                    generate_manifest = True
 
             # The following usage of execute_opensearch_query() followed by size_response_for_gateway() replaces
             # the functionality of execute_query(), so that the JSON can be manipulated between those calls.
@@ -422,7 +485,39 @@ class SearchAPI:
                                                 , es_url=oss_base_url
                                                 , query=json_query_dict
                                                 , request_params={'filter_path':'hits.hits._source'})
-
+            
+            manifest_list = []
+            if generate_manifest is True:
+                status_code = opensearch_response.status_code
+                content_data = opensearch_response.text
+                if status_code == 303:
+                    s3_response = requests.get(content_data)
+                    output = s3_response
+                else:
+                    output = opensearch_response
+                output_json = output.json()
+                if "status" in output_json:
+                    raise Exception(f"OpenSearch query return a status code of '{opensearch_response.status_code}'."
+                                f" See logs.")
+                hits = output_json.get('hits')
+                if not hits:
+                    # This resposne is different from simply returning no results. This means the entire outer "hits" field is missing.
+                    return make_response(jsonify("Response contains no hits"), 404)
+                hit_list = hits.get('hits')
+                if not hit_list:
+                    return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
+                for hit in hit_list:
+                    source = hit.get("_source")
+                    entity_type = source.get("entity_type")
+                    hubmap_id = source.get("hubmap_id")
+                    if entity_type is None:
+                        return make_response(jsonify("Required field 'entity_type' was not returned by the query. Make sure it has not been excluded"), 400)
+                    if entity_type.lower() == "dataset":
+                        manifest_list.append(f"{hubmap_id} /")
+                if not manifest_list:
+                    return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
+                manifest_text = '\n'.join(manifest_list)
+                return Response(manifest_text, mimetype='text/plain')
             if  opensearch_response.status_code == 200:
                 # Strip away whatever remains of OpenSearch artifacts, such as _source, for the purpose
                 # of making usage more convenient when searching with parameters rather than QDSL queries.
@@ -560,6 +655,17 @@ class SearchAPI:
                                     ,query=None
                                     ,request_params=None
                                     ,large_response_settings_dict=self.S3_settings_dict)
+        generate_manifest = False
+
+        if bool(request.args):
+            produce_manifest = request.args.get('produce-clt-manifest')
+
+            if produce_manifest.lower() == "true":
+                generate_manifest = True
+
+        if generate_manifest is True:
+            return self.build_manifest(request, response)
+
         return response
 
     # Info
