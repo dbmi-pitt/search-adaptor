@@ -1,6 +1,8 @@
 import os
+from dataclasses import dataclass, field
+from typing import Optional
 
-from flask import abort, jsonify, Flask, json, Response
+from flask import abort, Flask, json, Response
 import logging
 import requests
 from urllib.parse import urlparse
@@ -234,3 +236,93 @@ def check_response_payload_size(response_text):
         msg = f'Search result length {search_result_payload} is larger than allowed maximum of {aws_api_gateway_payload_max} bytes'
         logger.debug(msg)
         internal_server_error(msg)
+
+
+def upsert(doc: dict, index: str, es_url: str, headers: Optional[dict] = None, verify: bool = False):
+    """ Update or insert a document in the index.
+
+    Parameters
+    ----------
+    doc: dict
+        The document to be updated or inserted.
+    index: str
+        The index where the document is to be updated or inserted.
+    es_url: str
+        The URL of the Elasticsearch or OpenSearch instance.
+    headers: dict, optional
+        The headers to be included in the request.
+    verify: bool, optional
+        Whether to verify the SSL certificate.
+
+    Returns
+    -------
+    requests.Response
+        The response from the Elasticsearch or OpenSearch instance.
+    """
+    url = f"{es_url}/{index}/_update/{doc['uuid']}"
+    body = {
+        "doc": doc,
+        "doc_as_upsert": True
+    }
+    return requests.post(url, json=body, headers=headers, verify=verify)
+
+
+@dataclass(frozen=True)
+class BulkUpdate:
+    """A class to represent a bulk update operation.
+
+    Attributes
+    ----------
+    upserts: list[dict]
+        The documents to be updated or inserted.
+    deletes: list[str]
+        The UUIDs of the documents to be deleted.
+    """
+    upserts: list[dict] = field(default_factory=list)
+    deletes: list[str] = field(default_factory=list)
+
+
+def bulk_update(bulk_update: BulkUpdate, index: str, es_url: str, headers: Optional[dict] = None, verify: bool = False):
+    """Upsert (update or insert) or delete multiple documents in the index.
+
+    Parameters
+    ----------
+    bulk_update: BulkUpdate
+        The bulk update object containing the documents to be updated or inserted and the UUIDs of the documents to be deleted.
+    index: str
+        The index where the documents are to be updated or inserted or deleted.
+    es_url: str
+        The URL of the Elasticsearch or OpenSearch instance.
+    headers: dict, optional
+        The headers to be included in the request.
+    verify: bool, optional
+        Whether to verify the SSL certificate.
+
+    Returns
+    -------
+    requests.Response
+        The response from the Elasticsearch or OpenSearch instance.
+
+    Raises
+    ------
+    ValueException
+        If no upserts or deletes are provided.
+    """
+    if not bulk_update.upserts and not bulk_update.deletes:
+        return ValueError("No upserts or deletes provided.")
+
+    url = f"{es_url}/{index}/_bulk"
+    if headers is None:
+        headers = {"Content-Type": "application/x-ndjson"}
+    else:
+        headers["Content-Type"] = "application/x-ndjson"
+
+    # Preparing ndjson content
+    upserts = [
+        f'{{"update":{{"_id":"{upsert["uuid"]}"}}}}\n{{"doc":{json.dumps(upsert, separators=(",", ":"))},"doc_as_upsert":true}}'
+        for upsert in bulk_update.upserts
+    ]
+    deletes = [f'{{ "delete": {{ "_id": "{delete_uuid}" }} }}' for delete_uuid in bulk_update.deletes]
+
+    body = "\n".join(upserts + deletes) + "\n"
+    return requests.post(url, headers=headers, data=body, verify=verify)
