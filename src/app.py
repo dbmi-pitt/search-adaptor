@@ -1384,9 +1384,13 @@ class SearchAPI:
         return headers_dict
 
     def init_translator(self, token):
-        if self.ubkg_instance is None:
-            return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ONTOLOGY_API_BASE_URL)
-        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ubkg_instance)
+        ont_api_base_url = self.ONTOLOGY_API_BASE_URL if self.ubkg_instance is None else self.ubkg_instance
+        return self.translator_module.Translator(   indices=self.INDICES
+                                                    , app_client_id=self.APP_CLIENT_ID
+                                                    , app_client_secret=self.APP_CLIENT_SECRET
+                                                    , token=token
+                                                    , ontology_api_base_url=ont_api_base_url
+                                                    , es_retry_on_conflict_freq=self.ES_RETRY_ON_CONFLICT_FREQ)
 
     # Get a list of filtered Elasticsearch indices to expose to end users without the prefix
     def get_filtered_indices(self):
