@@ -15,6 +15,10 @@ __pycache__/
 Pipfile
 Pipfile.lock
 
+# Virtual environment
+env/
+venv/
+
 #Eclipse project files
 .project
 .pydevproject
