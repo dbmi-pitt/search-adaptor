@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 import pandas as pd
 import requests
-from flask import request, make_response
+from flask import request, make_response, jsonify
 
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
