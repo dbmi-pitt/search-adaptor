@@ -297,7 +297,7 @@ class SearchAPI:
         if bool(request.args):
             produce_manifest = request.args.get('produce-clt-manifest')
 
-            if produce_manifest.lower() == "true":
+            if produce_manifest and produce_manifest.lower() == "true":
                 generate_manifest = True
 
         if generate_manifest is True:
@@ -660,7 +660,7 @@ class SearchAPI:
         if bool(request.args):
             produce_manifest = request.args.get('produce-clt-manifest')
 
-            if produce_manifest.lower() == "true":
+            if produce_manifest and produce_manifest.lower() == "true":
                 generate_manifest = True
 
         if generate_manifest is True:
