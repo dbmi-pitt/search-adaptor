@@ -472,7 +472,7 @@ class SearchAPI:
                 produce_manifest = request.args.get('produce-clt-manifest')
                 json_query_dict['query']['bool']['must'] = [item for item in json_query_dict['query']['bool']['must'] if not ('match_phrase' in item and 'produce-clt-manifest.keyword' in item['match_phrase'])]
 
-                if produce_manifest.lower() == "true":
+                if produce_manifest and produce_manifest.lower() == "true":
                     generate_manifest = True
 
             # The following usage of execute_opensearch_query() followed by size_response_for_gateway() replaces
@@ -547,7 +547,7 @@ class SearchAPI:
             else:
                 logger.error(f"Unable to return ['hits']['hits'] content of opensearch_response with"
                              f" status_code={opensearch_response.status_code}"
-                             f" and len(json)={len(opensearch_response.json)}.")
+                             f" and len(json)={len(opensearch_response.json())}.")
                 raise Exception(f"OpenSearch query return a status code of '{opensearch_response.status_code}'."
                                 f" See logs.")
         except Exception as e:
