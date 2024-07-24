@@ -137,8 +137,6 @@ def execute_opensearch_query(query_against, request, index, es_url, query=None, 
     else:
         json_data = query
 
-    logger.debug(json_data)
-
     return requests.post(url=target_url, json=json_data)
 
 def size_response_for_gateway(response_json=None, large_response_settings_dict=None):
