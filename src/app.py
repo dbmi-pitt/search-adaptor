@@ -47,6 +47,18 @@ class SearchAPI:
                                     ,'aws_object_url_expiration_in_secs': self.AWS_OBJECT_URL_EXPIRATION_IN_SECS
                                     ,'service_configured_obj_prefix': self.AWS_S3_OBJECT_PREFIX}
 
+        ## Initialize an S3Worker from hubmap-commons
+        try:
+            self.anS3Worker = S3Worker( ACCESS_KEY_ID=self.S3_settings_dict['aws_access_key_id']
+                                        , SECRET_ACCESS_KEY=self.S3_settings_dict['aws_secret_access_key']
+                                        , S3_BUCKET_NAME=self.S3_settings_dict['aws_s3_bucket_name']
+                                        , S3_OBJECT_URL_EXPIRATION_IN_SECS=self.S3_settings_dict['aws_object_url_expiration_in_secs']
+                                        , LARGE_RESPONSE_THRESHOLD=self.S3_settings_dict['large_response_threshold']
+                                        , SERVICE_S3_OBJ_PREFIX=self.S3_settings_dict['service_configured_obj_prefix'])
+            logger.info("anS3Worker initialized")
+        except Exception as s3exception:
+            logger.critical(s3exception, exc_info=True)
+
         # Specify the absolute path of the instance folder and use the config file relative to the instance path
         self.app = Flask(__name__, instance_path=os.path.join(os.path.abspath(os.path.dirname(__file__))))
 
@@ -279,19 +291,13 @@ class SearchAPI:
         es_url = self.INDICES['indices'][self.DEFAULT_INDEX_WITHOUT_PREFIX]['elasticsearch']['url'].strip(
             '/')
 
-        # Set a prefix used for naming any objects that end up in S3 which is
-        # specific to this service and this function.
-        function_name = inspect.currentframe().f_code.co_name
-        self.S3_settings_dict['service_configured_obj_prefix'] = \
-            f"{self.AWS_S3_OBJECT_PREFIX.replace('unspecified-function',function_name)}"
-
         response = execute_query(   query_against='_search'
-                                    ,request=request
-                                    ,index=target_index
-                                    ,es_url=es_url
-                                    ,query=None
-                                    ,request_params=None
-                                    ,large_response_settings_dict=self.S3_settings_dict)
+                                    , request=request
+                                    , index=target_index
+                                    , es_url=es_url
+                                    , s3_worker=self.anS3Worker
+                                    , query=None
+                                    , request_params=None)
         generate_manifest = False
 
         if bool(request.args):
@@ -461,12 +467,6 @@ class SearchAPI:
                        ,f"Parameterized query of OpenSearch using composite_index={composite_index}"
                         f" target_index={target_index}, entity_type={entity_type}, oss_base_url={oss_base_url}")
 
-            # Set a prefix used for naming any objects that end up in S3 which is
-            # specific to this service and this function.
-            function_name = inspect.currentframe().f_code.co_name
-            self.S3_settings_dict['service_configured_obj_prefix'] = \
-                f"{self.AWS_S3_OBJECT_PREFIX.replace('unspecified-function', function_name)}"
-            
             generate_manifest = False
             if bool(request.args):
                 produce_manifest = request.args.get('produce-clt-manifest')
@@ -475,8 +475,8 @@ class SearchAPI:
                 if produce_manifest and produce_manifest.lower() == "true":
                     generate_manifest = True
 
-            # The following usage of execute_opensearch_query() followed by size_response_for_gateway() replaces
-            # the functionality of execute_query(), so that the JSON can be manipulated between those calls.
+            # The following usage of execute_opensearch_query() followed by self.anS3Worker.stash_response_body_if_big()
+            # replaces the functionality of execute_query(), so that the JSON can be manipulated between those calls.
 
             # Return the elasticsearch resulting json data as json string
             opensearch_response = execute_opensearch_query(query_against='_search'
@@ -535,15 +535,23 @@ class SearchAPI:
                     resp_json = convenience_json
 
                 # Check the size of what is to be returned through the AWS Gateway, and replace it with
-                # a response that links to AWS S3, if appropriate.
-                s3_response = size_response_for_gateway(response_json=json.dumps(resp_json)
-                                                        , large_response_settings_dict=self.S3_settings_dict)
-                if s3_response is not None:
-                    return s3_response
-                else:
-                    return Response(response=json.dumps(resp_json)
-                                    , status=opensearch_response.status_code
-                                    , mimetype='application/json')
+                # a response that links to an Object in the AWS S3 Bucket, if appropriate.
+                try:
+                    s3_url = self.anS3Worker.stash_response_body_if_big(json.dumps(resp_json).encode('utf-8'))
+                    if s3_url is not None:
+                        return Response(response=s3_url
+                                        , status=303)  # See Other
+                except Exception as s3exception:
+                    logger.error(f"Error using anS3Worker to handle len(json.dumps(sample_prov_list).encode('utf-8'))="
+                                 f"{len(json.dumps(sample_prov_list).encode('utf-8'))}.")
+                    logger.error(s3exception, exc_info=True)
+                    return Response(response=f"Unexpected error storing large results in S3. See logs."
+                                    , status=500)
+
+                # Return a regular response through the AWS Gateway
+                return Response(response=json.dumps(resp_json)
+                                , status=opensearch_response.status_code
+                                , mimetype='application/json')
             else:
                 logger.error(f"Unable to return ['hits']['hits'] content of opensearch_response with"
                              f" status_code={opensearch_response.status_code}"
@@ -641,20 +649,14 @@ class SearchAPI:
         # get URL for that index
         es_url = self.INDICES['indices'][index_without_prefix]['elasticsearch']['url'].strip('/')
 
-        # Set a prefix used for naming any objects that end up in S3 which is
-        # specific to this service and this function.
-        function_name = inspect.currentframe().f_code.co_name
-        self.S3_settings_dict['service_configured_obj_prefix'] = \
-            f"{self.AWS_S3_OBJECT_PREFIX.replace('unspecified-function',function_name)}"
-
         # Return the elasticsearch resulting json data as json string
         response = execute_query(   query_against='_search'
-                                    ,request=request
-                                    ,index=target_index
-                                    ,es_url=es_url
-                                    ,query=None
-                                    ,request_params=None
-                                    ,large_response_settings_dict=self.S3_settings_dict)
+                                    , request=request
+                                    , index=target_index
+                                    , es_url=es_url
+                                    , s3_worker=self.anS3Worker
+                                    , query=None
+                                    , request_params=None)
         generate_manifest = False
 
         if bool(request.args):
@@ -691,7 +693,7 @@ class SearchAPI:
             '/')
 
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_mget', request, target_index, es_url)
+        return execute_query('_mget', request, target_index, es_url, self.anS3Worker)
 
     # Info
     def mget_by_index(self, index_without_prefix):
@@ -716,7 +718,7 @@ class SearchAPI:
         es_url = self.INDICES['indices'][index_without_prefix]['elasticsearch']['url'].strip('/')
 
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_mget', request, target_index, es_url)
+        return execute_query('_mget', request, target_index, es_url, self.anS3Worker)
 
     # HTTP GET can be used to execute search with body against ElasticSearch REST API.
     def count(self):
@@ -732,7 +734,7 @@ class SearchAPI:
         es_url = self.INDICES['indices'][self.DEFAULT_INDEX_WITHOUT_PREFIX]['elasticsearch']['url'].strip('/')
 
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_count', request, target_index, es_url)
+        return execute_query('_count', request, target_index, es_url, self.anS3Worker)
 
     # HTTP GET can be used to execute search with body against ElasticSearch REST API.
     # Note: the index in URL is not he real index in Elasticsearch, it's that index without prefix
@@ -753,7 +755,7 @@ class SearchAPI:
         es_url = self.INDICES['indices'][index_without_prefix]['elasticsearch']['url'].strip('/')
 
         # Return the elasticsearch resulting json data as json string
-        return execute_query('_count', request, target_index, es_url)
+        return execute_query('_count', request, target_index, es_url, self.anS3Worker)
 
     # Get a list of indices
     def indices(self):
