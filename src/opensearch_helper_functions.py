@@ -74,7 +74,7 @@ def get_uuids_from_es(index, es_url):
 
         logger.debug(f"OpenSearch '_search' query response returned resp.status_code={resp.status_code}.")
 
-        ret_obj = resp.get_json()
+        ret_obj = resp.json()
         uuids.extend(hit['_id'] for hit in ret_obj.get('hits').get('hits'))
 
         total = ret_obj.get('hits').get('total').get('value')
@@ -127,7 +127,7 @@ def execute_opensearch_query(query_against, request, index, es_url, query=None, 
         target_url = target_url[:-1]
 
     logger.debug("Target url: " + target_url)
-    if query is None:
+    if query is None and request is not None:
         # Parse incoming json string into json data(python dict object)
         json_data = request.get_json()
 
