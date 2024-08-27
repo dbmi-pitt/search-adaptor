@@ -410,9 +410,11 @@ class SearchAPI:
     # For initial implementation, only support exact match which "ands" each parameter in a "must" List.
     # More complex queries should continue to be done submitting a JSON payload with
     # a QDSL query to the search endpoint.
-    def _form_query_from_parameters(self, entity_type):
+    def _form_query_from_parameters(self, entity_type, query_from=0, query_size=500):
 
         json_dict_exact_match_entity_attrib = {}
+        json_dict_exact_match_entity_attrib['from'] = query_from
+        json_dict_exact_match_entity_attrib['size'] = query_size
         json_dict_exact_match_entity_attrib['query'] = {}
         json_dict_exact_match_entity_attrib['query']['bool'] = {}
         json_dict_exact_match_entity_attrib['query']['bool']['must'] = []
