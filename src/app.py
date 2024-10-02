@@ -1,3 +1,4 @@
+import sys
 import concurrent.futures
 import inspect
 import logging
@@ -297,7 +298,8 @@ class SearchAPI:
                                     , es_url=es_url
                                     , s3_worker=self.anS3Worker
                                     , query=None
-                                    , request_params=None)
+                                    , request_params=None
+                                    , general_index=self.INDICES['indices'][self.DEFAULT_INDEX_WITHOUT_PREFIX])
         generate_manifest = False
 
         if bool(request.args):
@@ -658,7 +660,8 @@ class SearchAPI:
                                     , es_url=es_url
                                     , s3_worker=self.anS3Worker
                                     , query=None
-                                    , request_params=None)
+                                    , request_params=None
+                                    , general_index=self.INDICES['indices'][self.DEFAULT_INDEX_WITHOUT_PREFIX])
         generate_manifest = False
 
         if bool(request.args):

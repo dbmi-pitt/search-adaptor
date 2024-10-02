@@ -85,7 +85,7 @@ def get_uuids_from_es(index, es_url):
 
     return uuids
 
-def execute_opensearch_query(query_against, request, index, es_url, query=None, request_params=None):
+def execute_opensearch_query(query_against, request, index, es_url, query=None, request_params=None, general_index=None):
     supported_query_against = ['_search', '_count', '_mget']
     supported_endpoints_with_id = ['_update']
     supported_endpoints = supported_query_against + supported_endpoints_with_id
@@ -139,16 +139,20 @@ def execute_opensearch_query(query_against, request, index, es_url, query=None, 
         # The use of json parameter converts python dict to json string and adds content-type: application/json automatically
     else:
         json_data = query
-
+    if general_index and 'log_query' in general_index and general_index.get('log_query') is True:
+        if query_against in ['_search']:
+            logger.info(f"Query: {json_data}")
+            print(f"we got {json_data}")
     return requests.post(url=target_url, json=json_data)
 
-def execute_query(query_against, request, index, es_url, s3_worker, query=None, request_params=None):
+def execute_query(query_against, request, index, es_url, s3_worker, query=None, request_params=None, general_index=None):
     opensearch_response = execute_opensearch_query(query_against=query_against
                                                    ,request=request
                                                    ,index=index
                                                    ,es_url=es_url
                                                    ,query=query
-                                                   ,request_params=request_params)
+                                                   ,request_params=request_params
+                                                   ,general_index=general_index)
 
     # Continue on using the exact JSON returned by the OpenSearch query. Use cases which need to
     # manipulate the JSON for their response should do their own execute_opensearch_query() and
