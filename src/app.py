@@ -661,7 +661,7 @@ class SearchAPI:
                                     , s3_worker=self.anS3Worker
                                     , query=None
                                     , request_params=None
-                                    , general_index=self.INDICES['indices'][self.DEFAULT_INDEX_WITHOUT_PREFIX])
+                                    , general_index=self.INDICES['indices'][index_without_prefix])
         generate_manifest = False
 
         if bool(request.args):
