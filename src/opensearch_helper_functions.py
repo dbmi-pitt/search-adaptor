@@ -141,7 +141,7 @@ def execute_opensearch_query(query_against, request, index, es_url, query=None, 
         json_data = query
     if general_index and 'log_query' in general_index and general_index.get('log_query') is True:
         if query_against in ['_search']:
-            logger.info(f"Query: {json_data}")
+            logger.info(f"Query against {index}: {json_data}")
     return requests.post(url=target_url, json=json_data)
 
 def execute_query(query_against, request, index, es_url, s3_worker, query=None, request_params=None, general_index=None):

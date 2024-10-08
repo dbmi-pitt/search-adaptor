@@ -1,4 +1,3 @@
-import sys
 import concurrent.futures
 import inspect
 import logging
