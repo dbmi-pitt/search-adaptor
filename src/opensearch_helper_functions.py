@@ -45,8 +45,8 @@ def get_uuids_from_es(index, es_url):
     size = 10_000
     query = {
         "size": size,
-        "from": len(uuids),
         "_source": ["_id"],
+        "track_total_hits": True,
         "query": {
             "bool": {
                 "must": [],
@@ -58,7 +58,12 @@ def get_uuids_from_es(index, es_url):
                 "should": [],
                 "must_not": []
             }
-        }
+        },
+        "sort": [
+            {
+                "_id": "asc"
+            }
+        ],
     }
 
     end_of_list = False
@@ -81,7 +86,8 @@ def get_uuids_from_es(index, es_url):
         if total <= len(uuids):
             end_of_list = True
         else:
-            query['from'] = len(uuids)
+            # Append 'search_after' to the query with the "sort"  value from the last item from the original query's response
+            query['search_after'] = ret_obj['hits'].get('hits')[len(ret_obj['hits'].get('hits'))-1]['sort']
 
     return uuids
 
