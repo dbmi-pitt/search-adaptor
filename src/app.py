@@ -773,23 +773,29 @@ class SearchAPI:
     # Get the status of Elasticsearch cluster by calling the health API
     # This shows the connection status and the cluster health status (if connected)
     def status(self):
-        response_data = {
-            # Use strip() to remove leading and trailing spaces, newlines, and tabs
-            'version': ((Path(__file__).absolute().parent.parent.parent.parent / 'VERSION').read_text()).strip(),
-            'build': ((Path(__file__).absolute().parent.parent.parent.parent / 'BUILD').read_text()).strip(),
-            'elasticsearch_connection': False
-        }
+        try:
+            response_data = {
+                # Use strip() to remove leading and trailing spaces, newlines, and tabs
+                'version': ((Path(__file__).absolute().parent.parent.parent.parent / 'VERSION').read_text()).strip(),
+                'build': ((Path(__file__).absolute().parent.parent.parent.parent / 'BUILD').read_text()).strip(),
+                'elasticsearch_connection': False
+            }
 
-        target_url = self.DEFAULT_ELASTICSEARCH_URL + '/_cluster/health'
-        resp = requests.get(url=target_url)
+            target_url = self.DEFAULT_ELASTICSEARCH_URL + '/_cluster/health'
+            resp = requests.get(url=target_url)
 
-        if resp.status_code == 200:
-            response_data['elasticsearch_connection'] = True
-
-            # If connected, we also get the cluster health status
-            status_dict = resp.json()
-            # Add new key
-            response_data['elasticsearch_status'] = status_dict['status']
+            if resp.status_code == 200:
+                response_data['elasticsearch_connection'] = True
+                # If connected, we also get the cluster health status
+                status_dict = resp.json()
+                # Add new key
+                response_data['elasticsearch_status'] = status_dict['status']
+            else:
+                logger.error(f'Error while checking the status: {resp.status_code}, {resp.text}')
+                internal_server_error('Error while checking the elasticsearch status. Please check the logs for more details.')
+        except Exception as e:
+            logger.error(f'Error while checking the status: {str(e)}')
+            internal_server_error('Error while checking the elasticsearch status. Please check the logs for more details.')
 
         return jsonify(response_data)
 
