@@ -1,11 +1,9 @@
 import concurrent.futures
-import inspect
 import logging
 import re
 import threading
 from pathlib import Path
 import json
-from urllib.parse import urlparse
 
 import pandas as pd
 import requests
@@ -14,7 +12,6 @@ from flask import request, make_response, jsonify
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
 from urllib3.exceptions import InsecureRequestWarning
-from yaml import safe_load
 
 # Local modules
 from opensearch_helper_functions import *
