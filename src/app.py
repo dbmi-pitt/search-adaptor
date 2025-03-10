@@ -1,3 +1,4 @@
+import os
 import concurrent.futures
 import logging
 import re
@@ -7,7 +8,7 @@ import json
 
 import pandas as pd
 import requests
-from flask import request, make_response, jsonify
+from flask import Response, request, make_response, jsonify
 
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
@@ -222,7 +223,7 @@ class SearchAPI:
 
     def index(self):
         return "Hello! This is the Search API service :)"
-    
+
     ####################################################################################################
     ## Helper Functions
     ####################################################################################################
@@ -259,7 +260,7 @@ class SearchAPI:
             entity_type = source.get("entity_type")
             consortium_id = source.get(self.CONSORTIUM_ID)
             if entity_type is None:
-                    return make_response(jsonify("Required field 'entity_type' was not returned by the query. Make sure it has not been excluded"), 400)
+                return make_response(jsonify("Required field 'entity_type' was not returned by the query. Make sure it has not been excluded"), 400)
             if entity_type.lower() == "dataset":
                 manifest_list.append(f"{consortium_id} /")
         if not manifest_list:
@@ -351,7 +352,7 @@ class SearchAPI:
         # After a successful call, check if the response payload exceeds the size that
         # can pass through the AWS Gateway.
         if response.status_code == 200:
-           check_response_payload_size(response.text)
+            check_response_payload_size(response.text)
 
         # Return the Elasticsearch resulting json data and status code
         if response.status_code == 200:
@@ -385,7 +386,7 @@ class SearchAPI:
         # After a successful call, check if the response payload exceeds the size that
         # can pass through the AWS Gateway.
         if response.status_code == 200:
-           check_response_payload_size(response.text)
+            check_response_payload_size(response.text)
 
         # Return the Elasticsearch resulting json data and status code
         if response.status_code == 200:
@@ -486,7 +487,7 @@ class SearchAPI:
                                                 , es_url=oss_base_url
                                                 , query=json_query_dict
                                                 , request_params={'filter_path':'hits.hits._source'})
-            
+
             manifest_list = []
             if generate_manifest is True:
                 status_code = opensearch_response.status_code
@@ -519,7 +520,7 @@ class SearchAPI:
                     return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
                 manifest_text = '\n'.join(manifest_list)
                 return Response(manifest_text, mimetype='text/plain')
-            if  opensearch_response.status_code == 200:
+            if opensearch_response.status_code == 200:
                 # Strip away whatever remains of OpenSearch artifacts, such as _source, for the purpose
                 # of making usage more convenient when searching with parameters rather than QDSL queries.
                 # N.B. Many such artifacts should have already been stripped through usage of the filter_path.
@@ -852,7 +853,6 @@ class SearchAPI:
             logger.info('Started live reindex all')
         except Exception as e:
             logger.exception(e)
-
             internal_server_error(e)
 
         return 'Request of live reindex all documents accepted', 202
@@ -1277,7 +1277,7 @@ class SearchAPI:
     Parameters
     ----------
     request : Flask request object
-        The Flask request passed from the API endpoint 
+        The Flask request passed from the API endpoint
 
     Returns
     -------
