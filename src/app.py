@@ -28,7 +28,7 @@ logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 class SearchAPI:
-    def __init__(self, config, translator_module, blueprint=None, ubkg_instance=None):
+    def __init__(self, config, translator_module, progress_interface=None, blueprint=None, ubkg_instance=None):
         # Set self based on passed in config parameters
         for key, value in config.items():
             setattr(self, key, value)
@@ -36,6 +36,7 @@ class SearchAPI:
         self.ubkg_instance = ubkg_instance
 
         self.translator_module = translator_module
+        self.progress_interface = progress_interface
 
         self.S3_settings_dict = {   'large_response_threshold': self.LARGE_RESPONSE_THRESHOLD
                                     ,'aws_access_key_id': self.AWS_ACCESS_KEY_ID
@@ -778,6 +779,10 @@ class SearchAPI:
                 'elasticsearch_connection': False
             }
 
+            if self.progress_interface:
+                response_data['is_indexing'] = self.progress_interface.is_indexing
+                response_data['percent_complete'] = self.progress_interface.percent_complete
+
             target_url = self.DEFAULT_ELASTICSEARCH_URL + '/_cluster/health'
             resp = requests.get(url=target_url)
 
@@ -1393,9 +1398,16 @@ class SearchAPI:
         return headers_dict
 
     def init_translator(self, token):
-        if self.ubkg_instance is None:
-            return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ONTOLOGY_API_BASE_URL)
-        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ubkg_instance)
+        if callable(self.translator_module):
+            # translator_module is a factory function
+            return self.translator_module(token)
+
+        ubkg = self.ubkg_instance
+        if ubkg is None:
+            ubkg = self.ONTOLOGY_API_BASE_URL
+
+        # check if Translator has config in the constructor
+        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, ubkg)
 
     # Get a list of filtered Elasticsearch indices to expose to end users without the prefix
     def get_filtered_indices(self):
