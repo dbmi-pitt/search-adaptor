@@ -1,20 +1,18 @@
+import os
 import concurrent.futures
-import inspect
 import logging
 import re
 import threading
 from pathlib import Path
 import json
-from urllib.parse import urlparse
 
 import pandas as pd
 import requests
-from flask import request, make_response, jsonify
+from flask import Response, request, make_response, jsonify
 
 # HuBMAP commons
 from hubmap_commons.hm_auth import AuthHelper
 from urllib3.exceptions import InsecureRequestWarning
-from yaml import safe_load
 
 # Local modules
 from opensearch_helper_functions import *
@@ -31,7 +29,7 @@ logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 class SearchAPI:
-    def __init__(self, config, translator_module, blueprint=None, ubkg_instance=None):
+    def __init__(self, config, translator_module, progress_interface=None, blueprint=None, ubkg_instance=None):
         # Set self based on passed in config parameters
         for key, value in config.items():
             setattr(self, key, value)
@@ -39,6 +37,7 @@ class SearchAPI:
         self.ubkg_instance = ubkg_instance
 
         self.translator_module = translator_module
+        self.progress_interface = progress_interface
 
         self.S3_settings_dict = {   'large_response_threshold': self.LARGE_RESPONSE_THRESHOLD
                                     ,'aws_access_key_id': self.AWS_ACCESS_KEY_ID
@@ -224,7 +223,7 @@ class SearchAPI:
 
     def index(self):
         return "Hello! This is the Search API service :)"
-    
+
     ####################################################################################################
     ## Helper Functions
     ####################################################################################################
@@ -261,7 +260,7 @@ class SearchAPI:
             entity_type = source.get("entity_type")
             consortium_id = source.get(self.CONSORTIUM_ID)
             if entity_type is None:
-                    return make_response(jsonify("Required field 'entity_type' was not returned by the query. Make sure it has not been excluded"), 400)
+                return make_response(jsonify("Required field 'entity_type' was not returned by the query. Make sure it has not been excluded"), 400)
             if entity_type.lower() == "dataset":
                 manifest_list.append(f"{consortium_id} /")
         if not manifest_list:
@@ -353,7 +352,7 @@ class SearchAPI:
         # After a successful call, check if the response payload exceeds the size that
         # can pass through the AWS Gateway.
         if response.status_code == 200:
-           check_response_payload_size(response.text)
+            check_response_payload_size(response.text)
 
         # Return the Elasticsearch resulting json data and status code
         if response.status_code == 200:
@@ -387,7 +386,7 @@ class SearchAPI:
         # After a successful call, check if the response payload exceeds the size that
         # can pass through the AWS Gateway.
         if response.status_code == 200:
-           check_response_payload_size(response.text)
+            check_response_payload_size(response.text)
 
         # Return the Elasticsearch resulting json data and status code
         if response.status_code == 200:
@@ -488,7 +487,7 @@ class SearchAPI:
                                                 , es_url=oss_base_url
                                                 , query=json_query_dict
                                                 , request_params={'filter_path':'hits.hits._source'})
-            
+
             manifest_list = []
             if generate_manifest is True:
                 status_code = opensearch_response.status_code
@@ -521,7 +520,7 @@ class SearchAPI:
                     return make_response(jsonify("Query returned successfully but contained no datasets."), 204)
                 manifest_text = '\n'.join(manifest_list)
                 return Response(manifest_text, mimetype='text/plain')
-            if  opensearch_response.status_code == 200:
+            if opensearch_response.status_code == 200:
                 # Strip away whatever remains of OpenSearch artifacts, such as _source, for the purpose
                 # of making usage more convenient when searching with parameters rather than QDSL queries.
                 # N.B. Many such artifacts should have already been stripped through usage of the filter_path.
@@ -773,23 +772,33 @@ class SearchAPI:
     # Get the status of Elasticsearch cluster by calling the health API
     # This shows the connection status and the cluster health status (if connected)
     def status(self):
-        response_data = {
-            # Use strip() to remove leading and trailing spaces, newlines, and tabs
-            'version': ((Path(__file__).absolute().parent.parent.parent.parent / 'VERSION').read_text()).strip(),
-            'build': ((Path(__file__).absolute().parent.parent.parent.parent / 'BUILD').read_text()).strip(),
-            'elasticsearch_connection': False
-        }
+        try:
+            response_data = {
+                # Use strip() to remove leading and trailing spaces, newlines, and tabs
+                'version': ((Path(__file__).absolute().parent.parent.parent.parent / 'VERSION').read_text()).strip(),
+                'build': ((Path(__file__).absolute().parent.parent.parent.parent / 'BUILD').read_text()).strip(),
+                'elasticsearch_connection': False
+            }
 
-        target_url = self.DEFAULT_ELASTICSEARCH_URL + '/_cluster/health'
-        resp = requests.get(url=target_url)
+            if self.progress_interface:
+                response_data['is_indexing'] = self.progress_interface.is_indexing
+                response_data['percent_complete'] = self.progress_interface.percent_complete
 
-        if resp.status_code == 200:
-            response_data['elasticsearch_connection'] = True
+            target_url = self.DEFAULT_ELASTICSEARCH_URL + '/_cluster/health'
+            resp = requests.get(url=target_url)
 
-            # If connected, we also get the cluster health status
-            status_dict = resp.json()
-            # Add new key
-            response_data['elasticsearch_status'] = status_dict['status']
+            if resp.status_code == 200:
+                response_data['elasticsearch_connection'] = True
+                # If connected, we also get the cluster health status
+                status_dict = resp.json()
+                # Add new key
+                response_data['elasticsearch_status'] = status_dict['status']
+            else:
+                logger.error(f'Error while checking the status: {resp.status_code}, {resp.text}')
+                internal_server_error('Error while checking the elasticsearch status. Please check the logs for more details.')
+        except Exception as e:
+            logger.error(f'Error while checking the status: {str(e)}')
+            internal_server_error('Error while checking the elasticsearch status. Please check the logs for more details.')
 
         return jsonify(response_data)
 
@@ -844,7 +853,6 @@ class SearchAPI:
             logger.info('Started live reindex all')
         except Exception as e:
             logger.exception(e)
-
             internal_server_error(e)
 
         return 'Request of live reindex all documents accepted', 202
@@ -1269,7 +1277,7 @@ class SearchAPI:
     Parameters
     ----------
     request : Flask request object
-        The Flask request passed from the API endpoint 
+        The Flask request passed from the API endpoint
 
     Returns
     -------
@@ -1390,9 +1398,16 @@ class SearchAPI:
         return headers_dict
 
     def init_translator(self, token):
-        if self.ubkg_instance is None:
-            return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ONTOLOGY_API_BASE_URL)
-        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, self.ubkg_instance)
+        if callable(self.translator_module):
+            # translator_module is a factory function
+            return self.translator_module(token)
+
+        ubkg = self.ubkg_instance
+        if ubkg is None:
+            ubkg = self.ONTOLOGY_API_BASE_URL
+
+        # check if Translator has config in the constructor
+        return self.translator_module.Translator(self.INDICES, self.APP_CLIENT_ID, self.APP_CLIENT_SECRET, token, ubkg)
 
     # Get a list of filtered Elasticsearch indices to expose to end users without the prefix
     def get_filtered_indices(self):
