@@ -780,7 +780,7 @@ class SearchAPI:
                 'elasticsearch_connection': False
             }
 
-            if self.progress_interface:
+            if self.progress_interface is not None:
                 response_data['is_indexing'] = self.progress_interface.is_indexing
                 response_data['percent_complete'] = self.progress_interface.percent_complete
 
