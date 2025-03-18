@@ -29,7 +29,7 @@ logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d
                     datefmt='%Y-%m-%d %H:%M:%S')
 
 class SearchAPI:
-    def __init__(self, config, translator_module, progress_interface=None, blueprint=None, ubkg_instance=None):
+    def __init__(self, config, translator_module, blueprint=None, ubkg_instance=None, progress_interface=None):
         # Set self based on passed in config parameters
         for key, value in config.items():
             setattr(self, key, value)
@@ -780,7 +780,7 @@ class SearchAPI:
                 'elasticsearch_connection': False
             }
 
-            if self.progress_interface:
+            if self.progress_interface is not None:
                 response_data['is_indexing'] = self.progress_interface.is_indexing
                 response_data['percent_complete'] = self.progress_interface.percent_complete
 
