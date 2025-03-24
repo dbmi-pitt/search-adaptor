@@ -109,14 +109,6 @@ class SearchAPI:
         def __mget_by_index(index_without_prefix):
             return self.mget_by_index(index_without_prefix)
 
-        @self.app.route('/count', methods=['GET'])
-        def __count():
-            return self.count()
-
-        @self.app.route('/<index_without_prefix>/count', methods=['GET'])
-        def __count_by_index(index_without_prefix):
-            return self.count_by_index(index_without_prefix)
-
         @self.app.route('/indices', methods=['GET'])
         def __indices():
             return self.indices()
