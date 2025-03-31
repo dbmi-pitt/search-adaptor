@@ -92,7 +92,7 @@ def get_uuids_from_es(index, es_url):
     return uuids
 
 def execute_opensearch_query(query_against, request, index, es_url, query=None, request_params=None, general_index=None):
-    supported_query_against = ['_search', '_count', '_mget']
+    supported_query_against = ['_search', '_mget']
     supported_endpoints_with_id = ['_update']
     supported_endpoints = supported_query_against + supported_endpoints_with_id
     separator = ','
