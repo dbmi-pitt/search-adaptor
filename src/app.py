@@ -25,8 +25,6 @@ requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 # Log rotation is handled via logrotate on the host system with a configuration file
 # Do NOT handle log file and rotation via the Python logging to avoid issues with multi-worker processes
 
-logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s:%(lineno)d: %(message)s', level=logging.DEBUG,
-                    datefmt='%Y-%m-%d %H:%M:%S')
 
 class SearchAPI:
     def __init__(self, config, translator_module, blueprint=None, ubkg_instance=None, progress_interface=None):
@@ -64,7 +62,10 @@ class SearchAPI:
         # If a Flask Blueprint is passed in from a service using this class, load that Blueprint.
         if blueprint is not None:
             self.app.register_blueprint(blueprint)
-
+        if self.DEBUG_MODE:
+            logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
+        else:
+            logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
         @self.app.errorhandler(400)
         def __http_bad_request(e):
             return self.http_bad_request(e)
