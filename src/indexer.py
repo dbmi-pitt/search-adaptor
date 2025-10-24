@@ -3,8 +3,6 @@ import logging
 
 from libs.es_writer import ESWriter
 
-logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO,
-                    datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__name__)
 
 class Indexer:
