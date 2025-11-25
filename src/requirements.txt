@@ -6,6 +6,8 @@ jsonschema>=3.2.0
 requests>=2.32.4
 PyYAML>=6.0
 
+pandas==2.3.3
+
 # Use the published package from PyPI as default
 # Use the branch name of commons from github for testing new changes made in commons from different branch
 # Default is main branch
