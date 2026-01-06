@@ -1,3 +1,4 @@
+from atlas_consortia_jobq import JobQueue
 import os
 import concurrent.futures
 import logging
@@ -66,6 +67,13 @@ class SearchAPI:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
         else:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
+        
+        self.search_queue = JobQueue(
+            redis_host=os.getenv('REDIS_HOST', 'localhost'),
+            redis_port=int(os.getenv('REDIS_PORT', 6379)),
+            redis_db=int(os.getenv('REDIS_DB', 0))
+        )
+        
         @self.app.errorhandler(400)
         def __http_bad_request(e):
             return self.http_bad_request(e)
@@ -120,7 +128,38 @@ class SearchAPI:
 
         @self.app.route('/reindex/<uuid>', methods=['PUT'])
         def __reindex(uuid):
-            return self.reindex(uuid)
+            priority = request.args.get('priority')
+            return self.reindex(uuid, priority)
+        
+        @self.app.route('/queuestatus', methods=['GET'])
+        def __queue_status():
+            try:
+                status = self.search_queue.get_queue_status()
+                return jsonify(status), 200
+            except Exception as e:
+                return jsonify({"error": "Failed to retrieve queue status"}), 500
+        
+        @self.app.route('/reindex-status/<id>', methods=['GET'])
+        def __reindex_status(id):
+            try:
+                status = self.search_queue.get_status(id)
+                return jsonify(status), 200
+            except Exception as e:
+                return jsonify({"error": "Failed to retrieve status for entity "}), 500
+        
+        @self.app.route('/update-priority/<id>', methods=['PUT'])
+        def __update_priority(id):
+            try:
+                priority = request.args.get('priority', type=int)
+                if priority is None:
+                    return jsonify({"error": "Missing 'priority' parameter"}), 400
+                
+                job_id = self.search_queue.update_priority(id, priority)
+                return jsonify({"job_id": job_id, "new_priority": priority}), 200
+            except ValueError as ve:
+                return jsonify({"error": str(ve)}), 400
+            except Exception as e:
+                return jsonify({"error": f"Unexpected error: {e}"}), 500
 
         @self.app.route('/reindex-all', methods=['PUT'])
         def __reindex_all():
@@ -760,7 +799,7 @@ class SearchAPI:
 
     # This reindex function will also reindex Collection and Upload
     # in addition to the Dataset, Donor, Sample entities
-    def reindex(self, uuid):
+    def reindex(self, uuid, priority=None):
         # Reindex individual document doesn't require the token to belong
         # to the Data Admin group
         # since this is being used by entity-api and ingest-api too
@@ -770,6 +809,19 @@ class SearchAPI:
         asynchronous = request.args.get('async')
 
         translator = self.init_translator(token)
+        if self.JOB_QUEUE_MODE == True:
+            if priority is not None:
+                try:
+                    priority = int(priority)
+                except (TypeError, ValueError):
+                    bad_request_error( f"Priority must be an integer 1, 2, or 3")
+
+                if priority not in (1, 2, 3):
+                    bad_request_error( f"Priority must be an integer 1, 2, or 3")
+            else:
+                priority = 1
+            job_id = translator.enqueue_reindex(uuid, self.search_queue, priority)
+            return f"Request of reindexing {uuid} queued. Job ID: {job_id}", 202
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
