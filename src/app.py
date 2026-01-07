@@ -69,9 +69,10 @@ class SearchAPI:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
         
         self.reindex_queue = JobQueue(
-            redis_host=os.getenv('REDIS_HOST', 'localhost'),
-            redis_port=int(os.getenv('REDIS_PORT', 6379)),
-            redis_db=int(os.getenv('REDIS_DB', 0))
+            redis_host=self.REDIS_HOST,
+            redis_port=int(self.REDIS_PORT),
+            redis_db=int(self.REDIS_DB),
+            redis_password=self.REDIS_PASSWORD
         )
         
         @self.app.errorhandler(400)
