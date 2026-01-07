@@ -5,6 +5,7 @@ The Search Adaptor is a thin wrapper of the Elasticsearch. It handles data index
 Currently this search-adaptor is being used as a git submodule by the following projects:
 
 - https://github.com/hubmapconsortium/search-api
+- https://github.com/sennetconsortium/search-api
 
 ## Development process
 

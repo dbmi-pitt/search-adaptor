@@ -1,3 +1,4 @@
+from atlas_consortia_jobq import JobQueue
 import os
 import concurrent.futures
 import logging
@@ -66,6 +67,14 @@ class SearchAPI:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
         else:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
+        
+        self.reindex_queue = JobQueue(
+            redis_host=self.REDIS_HOST,
+            redis_port=int(self.REDIS_PORT),
+            redis_db=int(self.REDIS_DB),
+            redis_password=self.REDIS_PASSWORD
+        )
+        
         @self.app.errorhandler(400)
         def __http_bad_request(e):
             return self.http_bad_request(e)
@@ -120,7 +129,39 @@ class SearchAPI:
 
         @self.app.route('/reindex/<uuid>', methods=['PUT'])
         def __reindex(uuid):
-            return self.reindex(uuid)
+            priority = request.args.get('priority')
+            return self.reindex(uuid, priority)
+        
+        @self.app.route('/reindex-status', methods=['GET'])
+        def __queue_status():
+            try:
+                status = self.reindex_queue.get_queue_status()
+                return jsonify(status), 200
+            except Exception as e:
+                return jsonify({"error": "Failed to retrieve queue status"}), 500
+        
+        @self.app.route('/reindex-status/<id>', methods=['GET'])
+        def __reindex_status(id):
+            try:
+                status = self.reindex_queue.get_status(id)
+                return jsonify(status), 200
+            except Exception as e:
+                return jsonify({"error": "Failed to retrieve status for entity "}), 500
+        
+        # 1/7/26 - We are determining what the final form of this endpoint should look like ~Derek
+        # @self.app.route('/update-priority/<id>', methods=['PUT'])
+        # def __update_priority(id):
+        #     try:
+        #         priority = request.args.get('priority', type=int)
+        #         if priority is None:
+        #             return jsonify({"error": "Missing 'priority' parameter"}), 400
+                
+        #         job_id = self.reindex_queue.update_priority(id, priority)
+        #         return jsonify({"job_id": job_id, "new_priority": priority}), 200
+        #     except ValueError as ve:
+        #         return jsonify({"error": str(ve)}), 400
+        #     except Exception as e:
+        #         return jsonify({"error": f"Unexpected error: {e}"}), 500
 
         @self.app.route('/reindex-all', methods=['PUT'])
         def __reindex_all():
@@ -760,7 +801,7 @@ class SearchAPI:
 
     # This reindex function will also reindex Collection and Upload
     # in addition to the Dataset, Donor, Sample entities
-    def reindex(self, uuid):
+    def reindex(self, uuid, priority=None):
         # Reindex individual document doesn't require the token to belong
         # to the Data Admin group
         # since this is being used by entity-api and ingest-api too
@@ -770,6 +811,19 @@ class SearchAPI:
         asynchronous = request.args.get('async')
 
         translator = self.init_translator(token)
+        if self.JOB_QUEUE_MODE == True:
+            if priority is not None:
+                try:
+                    priority = int(priority)
+                except (TypeError, ValueError):
+                    bad_request_error( f"Priority must be an integer 1, 2, or 3, with 1 being the highest priority level and 3 being the lowest. May be None, in which case it defaults to 1 (high priority). If priority = 1, subsequent reindexing of associated ancestors/descendants will be at priority 2 (normal priority). If priority = 2, associated entities will be reindexed also at priority 2. And for priority 3 (lowest priority), associated entities will also be reindexed at priority 3")
+
+                if priority not in (1, 2, 3):
+                    bad_request_error( f"Priority must be an integer 1, 2, or 3, with 1 being the highest priority level and 3 being the lowest. May be None, in which case it defaults to 1 (high priority). If priority = 1, subsequent reindexing of associated ancestors/descendants will be at priority 2 (normal priority). If priority = 2, associated entities will be reindexed also at priority 2. And for priority 3 (lowest priority), associated entities will also be reindexed at priority 3")
+            else:
+                priority = 1
+            job_id = translator.enqueue_reindex(uuid, self.reindex_queue, priority)
+            return f"Request of reindexing {uuid} queued. Job ID: {job_id}", 202
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
