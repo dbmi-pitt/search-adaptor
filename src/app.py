@@ -68,7 +68,7 @@ class SearchAPI:
         else:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
         
-        self.JobQueue = JobQueue(
+        self.reindex_queue = JobQueue(
             redis_host=os.getenv('REDIS_HOST', 'localhost'),
             redis_port=int(os.getenv('REDIS_PORT', 6379)),
             redis_db=int(os.getenv('REDIS_DB', 0))
@@ -134,7 +134,7 @@ class SearchAPI:
         @self.app.route('/reindex-status', methods=['GET'])
         def __queue_status():
             try:
-                status = self.JobQueue.get_queue_status()
+                status = self.reindex_queue.get_queue_status()
                 return jsonify(status), 200
             except Exception as e:
                 return jsonify({"error": "Failed to retrieve queue status"}), 500
@@ -142,7 +142,7 @@ class SearchAPI:
         @self.app.route('/reindex-status/<id>', methods=['GET'])
         def __reindex_status(id):
             try:
-                status = self.JobQueue.get_status(id)
+                status = self.reindex_queue.get_status(id)
                 return jsonify(status), 200
             except Exception as e:
                 return jsonify({"error": "Failed to retrieve status for entity "}), 500
@@ -155,7 +155,7 @@ class SearchAPI:
         #         if priority is None:
         #             return jsonify({"error": "Missing 'priority' parameter"}), 400
                 
-        #         job_id = self.JobQueue.update_priority(id, priority)
+        #         job_id = self.reindex_queue.update_priority(id, priority)
         #         return jsonify({"job_id": job_id, "new_priority": priority}), 200
         #     except ValueError as ve:
         #         return jsonify({"error": str(ve)}), 400
@@ -821,7 +821,7 @@ class SearchAPI:
                     bad_request_error( f"Priority must be an integer 1, 2, or 3, with 1 being the highest priority level and 3 being the lowest. May be None, in which case it defaults to 1 (high priority). If priority = 1, subsequent reindexing of associated ancestors/descendants will be at priority 2 (normal priority). If priority = 2, associated entities will be reindexed also at priority 2. And for priority 3 (lowest priority), associated entities will also be reindexed at priority 3")
             else:
                 priority = 1
-            job_id = translator.enqueue_reindex(uuid, self.JobQueue, priority)
+            job_id = translator.enqueue_reindex(uuid, self.reindex_queue, priority)
             return f"Request of reindexing {uuid} queued. Job ID: {job_id}", 202
         if asynchronous:
             try:
