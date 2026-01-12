@@ -138,6 +138,7 @@ class SearchAPI:
                 status = self.reindex_queue.get_queue_status()
                 return jsonify(status), 200
             except Exception as e:
+                logger.exception("Failed to retrieve status for entity")
                 return jsonify({"error": "Failed to retrieve queue status"}), 500
         
         @self.app.route('/reindex-status/<id>', methods=['GET'])
@@ -146,6 +147,7 @@ class SearchAPI:
                 status = self.reindex_queue.get_status(id)
                 return jsonify(status), 200
             except Exception as e:
+                logger.exception("Failed to retrieve status for entity %s", id)
                 return jsonify({"error": "Failed to retrieve status for entity "}), 500
         
         # 1/7/26 - We are determining what the final form of this endpoint should look like ~Derek
