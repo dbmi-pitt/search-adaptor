@@ -149,7 +149,7 @@ class SearchAPI:
                 return jsonify(status), 200
             except ValueError as e:
                 logger.error(f"Job not in queue (may have been processed): {id}")
-                return jsonify({"Job not found in queue. May have already been processed"}), 200
+                return jsonify({"message": "Job not found in queue. May have already been processed"}), 200
             except Exception as e:
                 logger.exception("Failed to retrieve status for entity %s", id)
                 return jsonify({"error": "Failed to retrieve status for entity "}), 500
