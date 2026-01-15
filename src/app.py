@@ -9,6 +9,7 @@ import json
 
 import pandas as pd
 import requests
+from redis import Redis, ConnectionError, RedisError
 from flask import Response, request, make_response, jsonify
 
 # HuBMAP commons
@@ -138,6 +139,7 @@ class SearchAPI:
                 status = self.reindex_queue.get_queue_status()
                 return jsonify(status), 200
             except Exception as e:
+                logger.exception("Failed to retrieve status for entity")
                 return jsonify({"error": "Failed to retrieve queue status"}), 500
         
         @self.app.route('/reindex-status/<id>', methods=['GET'])
@@ -145,7 +147,11 @@ class SearchAPI:
             try:
                 status = self.reindex_queue.get_status(id)
                 return jsonify(status), 200
+            except ValueError as e:
+                logger.error(f"Job not in queue (may have been processed): {id}")
+                return jsonify({"Job not found in queue. May have already been processed"}), 200
             except Exception as e:
+                logger.exception("Failed to retrieve status for entity %s", id)
                 return jsonify({"error": "Failed to retrieve status for entity "}), 500
         
         # 1/7/26 - We are determining what the final form of this endpoint should look like ~Derek
@@ -822,8 +828,16 @@ class SearchAPI:
                     bad_request_error( f"Priority must be an integer 1, 2, or 3, with 1 being the highest priority level and 3 being the lowest. May be None, in which case it defaults to 1 (high priority). If priority = 1, subsequent reindexing of associated ancestors/descendants will be at priority 2 (normal priority). If priority = 2, associated entities will be reindexed also at priority 2. And for priority 3 (lowest priority), associated entities will also be reindexed at priority 3")
             else:
                 priority = 1
-            job_id = translator.enqueue_reindex(uuid, self.reindex_queue, priority)
-            return f"Request of reindexing {uuid} queued. Job ID: {job_id}", 202
+            try:
+                job_id = translator.enqueue_reindex(uuid, self.reindex_queue, priority)
+                return f"Request of reindexing {uuid} queued. Job ID: {job_id}", 202
+            except ValueError:
+                bad_request_error( f"Priority must be an integer 1, 2, or 3, with 1 being the highest priority level and 3 being the lowest. May be None, in which case it defaults to 1 (high priority). If priority = 1, subsequent reindexing of associated ancestors/descendants will be at priority 2 (normal priority). If priority = 2, associated entities will be reindexed also at priority 2. And for priority 3 (lowest priority), associated entities will also be reindexed at priority 3")
+            except RedisError:
+                internal_server_error( f"Unable to queue reindex of entity {uuid}")
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code in [401, 403]:
+                    unauthorized_error( f"Entity-api returned an error code {e.response.status_code}")
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
