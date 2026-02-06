@@ -135,8 +135,10 @@ class SearchAPI:
         
         @self.app.route('/reindex-status', methods=['GET'])
         def __queue_status():
+            all_queued = request.args.get('all-queued', '').lower() == 'true'
+            all_reindexing = request.args.get('all-reindexing', '').lower() == 'true'
             try:
-                status = self.reindex_queue.get_queue_status()
+                status = self.reindex_queue.get_queue_status(all_queued=all_queued, all_processing=all_reindexing)
                 return jsonify(status), 200
             except Exception as e:
                 logger.exception("Failed to retrieve status for entity")
