@@ -68,14 +68,15 @@ class SearchAPI:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
         else:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
-        
+
+
         self.reindex_queue = JobQueue(
             redis_host=self.REDIS_HOST,
             redis_port=int(self.REDIS_PORT),
             redis_db=int(self.REDIS_DB),
             redis_password=self.REDIS_PASSWORD
-        )
-        
+        ) if self.JOB_QUEUE_MODE else None
+
         @self.app.errorhandler(400)
         def __http_bad_request(e):
             return self.http_bad_request(e)
@@ -135,6 +136,8 @@ class SearchAPI:
         
         @self.app.route('/reindex-status', methods=['GET'])
         def __queue_status():
+            if self.reindex_queue is None:
+                return jsonify({"error": "Job queue is not configured to run"}), 200
             all_queued = request.args.get('all-queued', '').lower() == 'true'
             all_reindexing = request.args.get('all-reindexing', '').lower() == 'true'
             try:
@@ -146,6 +149,8 @@ class SearchAPI:
         
         @self.app.route('/reindex-status/<id>', methods=['GET'])
         def __reindex_status(id):
+            if self.reindex_queue is None:
+                return jsonify({"error": "Job queue is not configured to run"}), 200
             try:
                 status = self.reindex_queue.get_status(id)
                 return jsonify(status), 200
@@ -819,7 +824,7 @@ class SearchAPI:
         asynchronous = request.args.get('async')
 
         translator = self.init_translator(token)
-        if self.JOB_QUEUE_MODE == True:
+        if self.JOB_QUEUE_MODE:
             if priority is not None:
                 try:
                     priority = int(priority)
