@@ -68,13 +68,19 @@ class SearchAPI:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S')
         else:
             logging.basicConfig(format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s', level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S')
-        
-        self.reindex_queue = JobQueue(
-            redis_host=self.REDIS_HOST,
-            redis_port=int(self.REDIS_PORT),
-            redis_db=int(self.REDIS_DB),
-            redis_password=self.REDIS_PASSWORD
-        )
+
+        if self.JOB_QUEUE_MODE == True:
+            try:
+                self.reindex_queue = JobQueue(
+                    redis_host=self.REDIS_HOST,
+                    redis_port=self.REDIS_PORT,
+                    redis_db=self.REDIS_DB,
+                    redis_password=self.REDIS_PASSWORD
+                )
+            except Exception as e:
+                msg = f"Error: Failed to establish connection to redis with host {self.redis_host}, port {self.redis_port}, and db {self.redis_db}. Message: {e}"
+                logging.error(msg)
+                internal_server_error(msg)
         
         @self.app.errorhandler(400)
         def __http_bad_request(e):
@@ -801,6 +807,22 @@ class SearchAPI:
             else:
                 logger.error(f'Error while checking the status: {resp.status_code}, {resp.text}')
                 internal_server_error('Error while checking the elasticsearch status. Please check the logs for more details.')
+            
+            if self.JOB_QUEUE_MODE == True:
+                try:
+                    redis_conn = Redis(
+                        host=self.REDIS_HOST, 
+                        port=self.REDIS_PORT, 
+                        db=self.REDIS_DB,
+                        password=self.REDIS_PASSWORD,
+                        decode_responses=False  
+                    )
+                    response_data['redis_connection'] = redis_conn.ping()
+                except ConnectionError as e:
+                    response_data['redis_connection'] = False
+                    logger.error(f"Error connecting to redis with host {self.REDIS_HOST}, port {self.REDIS_PORT}, and db {self.REDIS_DB}")
+                
+
         except Exception as e:
             logger.error(f'Error while checking the status: {str(e)}')
             internal_server_error('Error while checking the elasticsearch status. Please check the logs for more details.')
