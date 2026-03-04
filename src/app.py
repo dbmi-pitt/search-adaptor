@@ -170,8 +170,8 @@ class SearchAPI:
         #         if priority is None:
         #             return jsonify({"error": "Missing 'priority' parameter"}), 400
                 
-        #         job_id = self.reindex_queue.update_priority(id, priority)
-        #         return jsonify({"job_id": job_id, "new_priority": priority}), 200
+        #         reference_id = self.reindex_queue.update_priority(id, priority)
+        #         return jsonify({"reference_id": reference_id, "new_priority": priority}), 200
         #     except ValueError as ve:
         #         return jsonify({"error": str(ve)}), 400
         #     except Exception as e:
@@ -853,8 +853,8 @@ class SearchAPI:
             else:
                 priority = 1
             try:
-                job_id = translator.enqueue_reindex(uuid, self.reindex_queue, priority)
-                return f"Request of reindexing {uuid} queued. Job ID: {job_id}", 202
+                reference_id = translator.enqueue_reindex(uuid, self.reindex_queue, priority)
+                return f"Request of reindexing {uuid} queued. Job ID: {reference_id}", 202
             except ValueError:
                 bad_request_error( f"Priority must be an integer 1, 2, or 3, with 1 being the highest priority level and 3 being the lowest. May be None, in which case it defaults to 1 (high priority). If priority = 1, subsequent reindexing of associated ancestors/descendants will be at priority 2 (normal priority). If priority = 2, associated entities will be reindexed also at priority 2. And for priority 3 (lowest priority), associated entities will also be reindexed at priority 3")
             except RedisError:
