@@ -862,6 +862,8 @@ class SearchAPI:
             except requests.exceptions.HTTPError as e:
                 if e.response.status_code in [401, 403]:
                     unauthorized_error( f"Entity-api returned an error code {e.response.status_code}")
+                if e.response.status_code in [404]:
+                    bad_request_error( f"Entity-api was unable to find the provided entity and returned an error code {e.response.status_code}")
         if asynchronous:
             try:
                 with concurrent.futures.ThreadPoolExecutor() as executor:
