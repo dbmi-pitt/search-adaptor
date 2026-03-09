@@ -854,7 +854,7 @@ class SearchAPI:
                 priority = 1
             try:
                 reference_id = translator.enqueue_reindex(uuid, self.reindex_queue, priority)
-                return f"Request of reindexing {uuid} queued. Job ID: {reference_id}", 202
+                return f"Request of reindexing {uuid} queued. Reference ID: {reference_id}", 202
             except ValueError:
                 bad_request_error( f"Priority must be an integer 1, 2, or 3, with 1 being the highest priority level and 3 being the lowest. May be None, in which case it defaults to 1 (high priority). If priority = 1, subsequent reindexing of associated ancestors/descendants will be at priority 2 (normal priority). If priority = 2, associated entities will be reindexed also at priority 2. And for priority 3 (lowest priority), associated entities will also be reindexed at priority 3")
             except RedisError:
