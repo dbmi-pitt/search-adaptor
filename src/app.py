@@ -161,7 +161,7 @@ class SearchAPI:
             except Exception as e:
                 logger.exception("Failed to retrieve status for entity %s", id)
                 return jsonify({"error": "Failed to retrieve status for entity "}), 500
-        
+
         # 1/7/26 - We are determining what the final form of this endpoint should look like ~Derek
         # @self.app.route('/update-priority/<id>', methods=['PUT'])
         # def __update_priority(id):
@@ -169,17 +169,13 @@ class SearchAPI:
         #         priority = request.args.get('priority', type=int)
         #         if priority is None:
         #             return jsonify({"error": "Missing 'priority' parameter"}), 400
-                
+
         #         reference_id = self.reindex_queue.update_priority(id, priority)
         #         return jsonify({"reference_id": reference_id, "new_priority": priority}), 200
         #     except ValueError as ve:
         #         return jsonify({"error": str(ve)}), 400
         #     except Exception as e:
         #         return jsonify({"error": f"Unexpected error: {e}"}), 500
-
-        @self.app.route('/reindex-all', methods=['PUT'])
-        def __reindex_all():
-            return self.reindex_all()
 
         @self.app.route('/attribute-values', methods=['GET'])
         @self.app.route('/<index>/attribute-values', methods=['GET'])
@@ -885,27 +881,6 @@ class SearchAPI:
                 internal_server_error(e)
 
             return f"Request of reindexing {uuid} accepted", 202
-
-    # Live reindex without first deleting and recreating the indices
-    # This just deletes the old document and add the latest document of each entity (if still available)
-    def reindex_all(self):
-        # The token needs to belong to the Data Admin group
-        # to be able to trigger a live reindex for all documents
-        token = self.get_user_token(request.headers, admin_access_required=True)
-        saved_request = request.headers
-
-        logger.debug(saved_request)
-
-        try:
-            translator = self.init_translator(token)
-            threading.Thread(target=translator.translate_all, args=[]).start()
-
-            logger.info('Started live reindex all')
-        except Exception as e:
-            logger.exception(e)
-            internal_server_error(e)
-
-        return 'Request of live reindex all documents accepted', 202
 
     def _get_index_mappings(self, composite_index):
         # get URL for the composite index specified.
