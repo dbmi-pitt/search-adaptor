@@ -12,4 +12,4 @@ pandas==2.3.3
 # Default is main branch
 #git+https://github.com/hubmapconsortium/commons.git@main#egg=hubmap-commons
 hubmap-commons>=2.1.23
-atlas-consortia-jobq>=0.1.7
+atlas-consortia-jobq>=0.1.8
